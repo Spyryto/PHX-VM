@@ -139,7 +139,7 @@ final class AdaptiveVm
                 $this->decisions[$functionId] = $decision;
 
                 if ($decision['recommendation'] === 'candidate_t2') {
-                    ++$this->compilationAttempts[$functionId];
+                    $this->compilationAttempts[$functionId] = ($this->compilationAttempts[$functionId] ?? 0) + 1;
                     try {
                         // Only compilation/loading is protected by fallback.
                         // Never catch an error from T2 execution and rerun it.
@@ -160,7 +160,7 @@ final class AdaptiveVm
         }
 
         // Instrumented T0 supplies counters only, not timing calibration.
-        ++$this->t0Runs[$functionId];
+        $this->t0Runs[$functionId] = ($this->t0Runs[$functionId] ?? 0) + 1;
         $this->lastBackend = 'T0';
         try {
             return $this->interpreter->run($functionId, $args, $maxSteps);
@@ -172,7 +172,7 @@ final class AdaptiveVm
     /** @param list<int|float|bool|string|null> $args */
     private function runT2(int $functionId, array $args, int $maxSteps): mixed
     {
-        ++$this->t2Runs[$functionId];
+        $this->t2Runs[$functionId] = ($this->t2Runs[$functionId] ?? 0) + 1;
         $this->lastBackend = 'T2';
         $compiled = $this->compiled[$functionId];
         try {
