@@ -27,7 +27,11 @@ jobs:
         run: php tests/fusion.php
       - name: T2 direct PHP differential tests
         run: php tests/t2.php
+      - name: T2 direct CALL/TAILCALL and recursion differential tests
+        run: php tests/t2-calls.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
         run: php bench/compare.php 5000
+      - name: Call and recursion benchmark smoke (no speed threshold)
+        run: php bench/calls.php 1000

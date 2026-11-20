@@ -108,18 +108,17 @@ $f = new FunctionDef('largeConstant', [T::INT], 0, T::INT, [
 ]);
 testT2(compareT2(new Program([$f], $pool), 0, [])[0] === 'return', 'large Bx constant');
 
-// Unsupported ISA fails explicitly, without an unsound partial translation.
-$callee = new FunctionDef('return', [T::INT], 1, T::INT, [I::abc(O::RET, 0)]);
+// CALL and TAILCALL now lower into a single stack-safe PHP closure.
+$callee = new FunctionDef('identity', [T::INT], 1, T::INT, [I::abc(O::RET, 0)]);
 foreach ([O::CALL, O::TAILCALL] as $callOpcode) {
     $body = $callOpcode === O::CALL
         ? [I::abc(O::CALL, 1, 0, 0), I::abc(O::RET, 1)]
         : [I::abc(O::TAILCALL, 0, 0, 0)];
-    $f = new FunctionDef('calling', [T::INT, T::INT], 1, T::INT, $body);
-    try {
-        PhpEmitter::source(new Program([$callee, $f]), 1);
-        throw new RuntimeException('Failed to reject CALL/TAILCALL');
-    } catch (UnsupportedCompilationException $expected) {
-        testT2(true, 'call rejected');
+    $calling = new FunctionDef('calling', [T::INT, T::INT], 1, T::INT, $body);
+    $programWithCalls = new Program([$callee, $calling]);
+    testT2(compareT2($programWithCalls, 1, [42])[0] === 'return', 'direct call support');
+    for ($budget = 1; $budget <= 5; ++$budget) {
+        compareT2($programWithCalls, 1, [42], $budget);
     }
 }
 try {
