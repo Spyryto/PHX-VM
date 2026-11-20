@@ -8,7 +8,7 @@ final class Vm
 {
     private int $lastSteps = 0;
 
-    public function __construct(private readonly Program $program)
+    public function __construct(private readonly Program $program, private readonly ?ExecutionProfile $profile = null)
     {
         Verifier::verify($program);
     }
@@ -39,11 +39,21 @@ final class Vm
         // Saved [function ID, return pc, register bank, destination register].
         $frames = [];
         $steps = 0;
+        $completed = false;
+        $profile = $this->profile;
+        if ($profile !== null) {
+            $profile->startRun($functionId);
+            $profile->enterFunction($functionId);
+        }
         try {
             while (true) {
-                if (++$steps > $maxSteps) throw new ExecutionLimitExceeded('Instruction budget exceeded');
+                if (++$steps > $maxSteps) {
+                    if ($profile !== null) $profile->rejectedByBudget($currentId);
+                    throw new ExecutionLimitExceeded('Instruction budget exceeded');
+                }
                 $word = $code[$pc++]; // verified: pc always valid
                 $op = $word & 255;
+                if ($profile !== null) $profile->charge($currentId, $op);
                 $a = ($word >> 8) & 255;
                 $b = ($word >> 16) & 255;
                 $c = ($word >> 24) & 255;
@@ -92,6 +102,10 @@ final class Vm
                             $nextRegisters[$i] = $r[$c + $i];
                         }
                         if ($op === Opcode::CALL) $frames[] = [$currentId, $pc, $r, $a];
+                        if ($profile !== null) {
+                            $profile->transfer($currentId, $op === Opcode::TAILCALL, count($frames));
+                            $profile->enterFunction($b);
+                        }
                         $currentId = $b;
                         $code = $callee->code;
                         $r = $nextRegisters;
@@ -99,7 +113,11 @@ final class Vm
                         break;
                     case Opcode::RET:
                         $result = $r[$a];
-                        if ($frames === []) return $result;
+                        if ($profile !== null) $profile->returned($currentId);
+                        if ($frames === []) {
+                            $completed = true;
+                            return $result;
+                        }
                         [$currentId, $pc, $r, $destination] = array_pop($frames);
                         $r[$destination] = $result;
                         $code = $functions[$currentId]->code;
@@ -110,6 +128,7 @@ final class Vm
             }
         } finally {
             $this->lastSteps = $steps;
+            if ($profile !== null) $profile->finishRun($functionId, $steps, $completed);
         }
     }
 }

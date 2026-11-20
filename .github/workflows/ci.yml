@@ -33,6 +33,8 @@ jobs:
         run: php tests/inlining.php
       - name: T2 live-register continuation differential suite
         run: php tests/liveness.php
+      - name: T0 profiler and tiering advisory differential tests
+        run: php tests/tiering.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
@@ -43,6 +45,8 @@ jobs:
         run: php bench/frames.php 250
       - name: Call and recursion benchmark smoke (no speed threshold)
         run: php bench/calls.php 1000
+      - name: Tiering calibration demo (no speed threshold)
+        run: php bench/tiering.php 400 30
       - name: End-to-end compile/write/load/execute benchmark (no speed threshold)
         run: php bench/end-to-end.php 400 3
       - name: End-to-end JSON report contract
