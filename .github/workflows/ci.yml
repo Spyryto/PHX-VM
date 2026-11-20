@@ -25,3 +25,5 @@ jobs:
         run: php tests/t1.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
+      - name: Benchmark smoke (no speed threshold)
+        run: php bench/compare.php 5000
