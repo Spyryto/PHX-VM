@@ -33,3 +33,5 @@ jobs:
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
         run: php bench/compare.php 5000
+      - name: Call and recursion benchmark smoke (no speed threshold)
+        run: php bench/calls.php 1000
