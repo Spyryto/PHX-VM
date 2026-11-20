@@ -44,6 +44,32 @@ Nel formato ABx, Bx occupa i bit 16..31. I salti sono indici assoluti delle istr
 
 Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C per RET. Le funzioni hanno fino a 256 registri tipizzati, argomenti nei primi arity registri, e una firma del tipo di ritorno. Il limite iniziale è 256 funzioni, 65.536 istruzioni/funzione e 65.536 costanti/modulo.
 
+## Formato binario PHX v1 (M4, sperimentale)
+
+Oltre alla rappresentazione in memoria `Program`, PHX-VM dispone di un
+interchange binario esplicito: `ProgramCodec::encode()` e
+`ProgramCodec::decode()` / `decodeFile()`.
+Il protocollo contiene un'intestazione `PHX\0`, una versione u16, un campo
+riservato obbligatoriamente zero, conteggi delle funzioni e costanti, valori
+con tag di tipo e descrittori di funzione con registri tipizzati e istruzioni
+u32 little-endian. Le costanti intere sono i64 little-endian con segno, i
+float sono IEEE-754 binary64 big-endian, le stringhe sono sequenze di byte
+precedute dalla loro lunghezza. Non usa `serialize()` di PHP,
+`unserialize()`, `eval()` o caricamento di PHP da un file utente.
+
+Il decoder controlla framing, valori di tag, dimensioni e versione,
+rifiuta byte finali non consumati ed esegue sempre `Verifier::verify()`
+prima di restituire un Program. Rifiuta file oltre 8 MiB, stringhe singole
+oltre 1 MiB, nomi di funzione oltre 255 byte o oltre 200.000 istruzioni
+complessive (restano validi anche i limiti esistenti per funzione). Il formato
+richiede un host PHP a 64 bit. Il binario importato resta **dato verificato**,
+non una sandbox per gli effetti dell'host: l'esecuzione necessita di un budget
+di istruzioni e dei limiti di memoria/tempo del processo PHP.
+
+Per la specifica dei campi, dei tag e il vettore di riferimento di 32 byte,
+vedi [BYTECODE.md](BYTECODE.md). La versione 1 identifica solo il protocollo
+binario sperimentale, **non** una promessa di retrocompatibilità prima della 1.0.
+
 ## Contratti di correttezza
 
 1. **Tipi stretti.** Nessuna coercizione PHP implicita. I tipi iniziali sono int, float, bool, string e null; il nucleo v0.1 implementa la sola aritmetica intera e confronti interi.
@@ -194,7 +220,9 @@ php tests/liveness.php
 php tests/tiering.php
 php tests/cache.php
 php tests/adaptive.php
+php tests/codec.php
 php examples/sum-tail.php 10000
+php examples/bytecode.php 500
 php bench/compare.php 30000
 php bench/inline.php 20000
 php bench/frames.php 2000
