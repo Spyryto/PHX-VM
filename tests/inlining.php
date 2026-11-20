@@ -159,8 +159,9 @@ foreach ([[20, 10], [PHP_INT_MAX, 1], [PHP_INT_MIN, -1]] as $args) {
 
 // Ineligible control flow / recursion must be left on the safe T2 path.
 $branchLeaf = new FunctionDef('branchLeaf', [T::INT, T::INT, T::BOOL], 1, T::INT, [
-    I::abc(O::IEQ, 2, 0, 1), I::abx(O::BR_TRUE, 2, 4),
-    I::abc(O::RET, 0), I::abc(O::RET, 0), I::abc(O::RET, 1),
+    I::abx(O::CONST_, 1, 0), I::abc(O::IEQ, 2, 0, 1),
+    I::abx(O::BR_TRUE, 2, 5), I::abc(O::RET, 0),
+    I::abc(O::RET, 0), I::abc(O::RET, 1),
 ]);
 $branchCaller = new FunctionDef('branchCaller', [T::INT, T::INT, T::INT, T::INT], 2, T::INT, [
     I::abc(O::CALL, 2, 0, 0), I::abc(O::RET, 2),
