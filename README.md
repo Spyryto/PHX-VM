@@ -20,6 +20,7 @@ php bench/calls.php 10000
 php bench/inline.php 20000
 php bench/frames.php 2000
 php bench/end-to-end.php 2000 7
+php bench/end-to-end.php 2000 7 --json
 ~~~
 
 - **T0: PhxVm\Vm** executes compact verified 32-bit register bytecode.
@@ -50,7 +51,7 @@ php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache \
 
 Use a **private, trusted cache directory**. Content-hashed filenames are immutable and checked before being required; never load generated PHP from untrusted locations. Disabling the newly-written-file protection is appropriate only in this controlled benchmark for immutable files; do not copy that setting blindly to a production environment.
 
-`opcache_is_script_cached()` and script hit counters are reported when available. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
+`opcache_is_script_cached()` and script hit counters are reported when available; the report also distinguishes configured JIT settings from an actually active JIT. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
 
 Next experiments: long-lived PHP-FPM/worker measurement, cold and warm OPcache with realistic request routing, and control-flow-aware inlining. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
 
