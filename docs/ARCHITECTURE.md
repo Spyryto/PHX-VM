@@ -72,6 +72,10 @@ Per non rallentare il caso comune, il backend **mantiene il precedente percorso 
 
 **Benchmark inlining:** `php bench/inline.php 20000` misura, sullo stesso bytecode che chiama una funzione foglia in un ciclo, T0 e T2 con/senza inlining. Espone separatamente generazione sorgente, caricamento e mediana del runtime; non misura il riuso OPcache cross-request e non impone alcuna soglia di speedup.
 
+**T2 continuazioni compatte (opt-in):** l'analisi di liveness `RegisterLiveness::acrossCalls` usa una propagazione all'indietro del flusso di dati su tutto il CFG verificato, compresi salti, confluenze e cicli. Per ogni `CALL` trova i registri che potrebbero essere letti dopo il ritorno, prima di essere sovrascritti. Esclude il registro di destinazione perché riceve il valore restituito. Il backend `CallPhpEmitter` può quindi emettere una continuazione contenente solo questi registri, invece di copiare tutto il banco del chiamante. Un insieme vuoto è legittimo: la continuazione conserva comunque il punto di ritorno, ma nessun valore del banco. `TAILCALL` non aggiunge mai un frame. L'analisi è intraprocedurale ma tiene conto delle letture/scritture alle altre chiamate; non serve analisi interprocedurale per sapere quali registri del chiamante sopravvivono. La condizione di correttezza è mantenere identici i risultati osservabili, il numero di istruzioni originarie eseguite, il punto e tipo di errore, e non leggere mai registri rimasti non ripristinati. La compilazione è disponibile tramite `PhpEmitter::source($program, $entry, $inline, true)`; l'opzione rimane disabilitata per default. Il bytecode canonico non cambia e l'inlining esistente è compatibile.
+
+**Benchmark delle continuazioni:** `php bench/frames.php 2000` confronta una ricorsione non terminale con 64 registri per frame, di cui solo uno vivo dopo la chiamata. Misura separatamente T0, T2 completo e T2 con liveness, costi di generazione/caricamento e dimensione del sorgente PHP. Il numero di slot salvati non è una misura della memoria fisica del processo e non implica automaticamente un vantaggio in altri programmi.
+
 **Supporto funzionale:** closure, ambienti catturati, chiamate indirette specializzate, applicazione parziale e pattern matching. Queste capacità non devono dipendere da Nail.
 
 **Dati e semantiche:** valori strutturati, interi arbitrari, float, record, rappresentazioni di stringhe/array, gestione effetti e capability dovranno essere specificati prima di ottimizzarli.
@@ -89,9 +93,11 @@ php tests/fusion.php
 php tests/t2.php
 php tests/t2-calls.php
 php tests/inlining.php
+php tests/liveness.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/inline.php 20000
+php bench/frames.php 2000
 ~~~
 
 Nessuna licenza è stata ancora selezionata.

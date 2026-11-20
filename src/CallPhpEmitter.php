@@ -13,10 +13,11 @@ namespace PhxVm;
  *
  * No PHP recursive calls, eval, opcode dispatch or user-controlled PHP code.
  * Optional leaf inlining uses private register banks and a compile-time budget.
+ * Optional frame trimming restores only registers live across CALL.
  */
 final class CallPhpEmitter
 {
-    public static function source(Program $program, int $entry, bool $inline = false): string
+    public static function source(Program $program, int $entry, bool $inline = false, bool $trimFrames = false): string
     {
         Verifier::verify($program);
         if (!isset($program->functions[$entry])) {
@@ -79,7 +80,16 @@ final class CallPhpEmitter
         // Count copied *original* bytecode words, not synthetic PHP lines.
         $remainingInlineOps = $inline ? InlineEmitter::MAX_TOTAL_COPIED_INSTRUCTIONS : 0;
 
-        /** @var list<array{id:int, pc:int, dest:int, registers:int}> $continuations */
+        // T2-only optimization. The canonical program and other executors
+        // still use the original register banks. Analyze after verification.
+        $acrossCalls = [];
+        if ($trimFrames) {
+            foreach ($functionIds as $id) {
+                $acrossCalls[$id] = RegisterLiveness::acrossCalls($program, $id);
+            }
+        }
+
+        /** @var list<array{id:int, pc:int, dest:int, saved:list<int>}> $continuations */
         $continuations = [];
         foreach ($functionIds as $id) {
             $function = $program->functions[$id];
@@ -146,14 +156,17 @@ final class CallPhpEmitter
                         }
                         if ($op === Opcode::CALL) {
                             $continuationId = count($continuations);
+                            $registerIds = $trimFrames
+                                ? $acrossCalls[$id][$pc]
+                                : range(0, $registerCount - 1);
                             $continuations[] = [
                                 'id' => $id,
                                 'pc' => $pc + 1,
                                 'dest' => $a,
-                                'registers' => $registerCount,
+                                'saved' => $registerIds,
                             ];
                             $savedRegisters = [];
-                            for ($r = 0; $r < $registerCount; ++$r) {
+                            foreach ($registerIds as $r) {
                                 $savedRegisters[] = '$r' . $r;
                             }
                             $lines[] = '        $frames[] = [' . $continuationId
@@ -195,11 +208,15 @@ final class CallPhpEmitter
         $lines[] = '        switch ($continuation) {';
         foreach ($continuations as $continuationId => $continuation) {
             $restore = [];
-            for ($r = 0; $r < $continuation['registers']; ++$r) {
+            foreach ($continuation['saved'] as $r) {
                 $restore[] = '$r' . $r;
             }
             $lines[] = '            case ' . $continuationId . ':';
-            $lines[] = '                [' . implode(', ', $restore) . '] = $saved;';
+            // Empty register sets are valid: the CALL destination alone is
+            // the only value observed after returning.
+            if ($restore !== []) {
+                $lines[] = '                [' . implode(', ', $restore) . '] = $saved;';
+            }
             $lines[] = '                $r' . $continuation['dest'] . ' = $returnValue;';
             $lines[] = '                goto F' . $continuation['id'] . '_B' . $continuation['pc'] . ';';
         }

@@ -31,11 +31,15 @@ jobs:
         run: php tests/t2-calls.php
       - name: T2 leaf inlining differential tests
         run: php tests/inlining.php
+      - name: T2 live-register continuation differential suite
+        run: php tests/liveness.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
         run: php bench/compare.php 5000
       - name: Inlining benchmark smoke (no speed threshold)
         run: php bench/inline.php 1000
+      - name: Live-register frame benchmark smoke (no speed threshold)
+        run: php bench/frames.php 250
       - name: Call and recursion benchmark smoke (no speed threshold)
         run: php bench/calls.php 1000
