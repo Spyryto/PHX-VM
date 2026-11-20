@@ -10,7 +10,7 @@ namespace PhxVm;
  */
 final class PhpEmitter
 {
-    public static function source(Program $program, int $functionId, bool $inline = false): string
+    public static function source(Program $program, int $functionId, bool $inline = false, bool $trimFrames = false): string
     {
         Verifier::verify($program);
         if (!isset($program->functions[$functionId])) {
@@ -25,7 +25,7 @@ final class PhpEmitter
                 // Preserve the original call-free fast path. Program-level
                 // direct calls use one generated PHP closure and an explicit
                 // stack of return continuations instead of PHP recursion.
-                return CallPhpEmitter::source($program, $functionId, $inline);
+                return CallPhpEmitter::source($program, $functionId, $inline, $trimFrames);
             }
             if (in_array($op, [Opcode::JMP, Opcode::BR_TRUE, Opcode::BR_FALSE], true)) {
                 $leaders[Instruction::bx($word)] = true;
