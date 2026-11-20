@@ -1,0 +1,25 @@
+name: PHX-VM tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Syntax validation
+        run: find src examples tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Tests
+        run: php tests/run.php
+      - name: Example smoke test
+        run: php examples/sum-tail.php 10000
