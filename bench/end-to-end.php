@@ -206,8 +206,12 @@ $explicitDir = $argv[3] ?? null;
 $jsonOutput = in_array('--json', $argv, true);
 if ($n < 1 || $n > 100000) throw new InvalidArgumentException('n must be 1..100000');
 if ($samples < 1 || $samples > 30) throw new InvalidArgumentException('samples must be 1..30');
-if ($explicitDir !== null && str_starts_with($explicitDir, '--')) {
-    throw new InvalidArgumentException('Pass a cache directory before --json');
+if ($explicitDir === '--json') $explicitDir = null;
+elseif ($explicitDir !== null && str_starts_with($explicitDir, '--')) {
+    throw new InvalidArgumentException('Unknown benchmark option');
+}
+foreach (array_slice($argv, 4) as $option) {
+    if ($option !== '--json') throw new InvalidArgumentException('Unknown benchmark option');
 }
 
 $ownedDirectory = $explicitDir === null;
@@ -244,6 +248,9 @@ try {
         caseE2e('loop_with_leaf_not_inlined', new Program([$double, $sumDoubles], [0, 1]), 1,
             [$n], $n * 12 + 30, $n * ($n + 1), $samples, $dir, false, true),
     ];
+    $opcacheStatus = function_exists('opcache_get_status')
+        ? opcache_get_status(false)
+        : false;
     $environment = [
         'php' => PHP_VERSION,
         'os' => PHP_OS_FAMILY,
@@ -252,7 +259,11 @@ try {
         'opcacheFileCacheConfigured' => ini_get('opcache.file_cache') !== '',
         'opcacheFileCacheOnly' => ini_get('opcache.file_cache_only'),
         'opcacheFileUpdateProtection' => ini_get('opcache.file_update_protection'),
-        'opcacheJit' => ini_get('opcache.jit'),
+        'opcacheJitConfigured' => ini_get('opcache.jit'),
+        'opcacheJitBufferSize' => ini_get('opcache.jit_buffer_size'),
+        'opcacheJitActive' => is_array($opcacheStatus)
+            ? ($opcacheStatus['jit']['on'] ?? null)
+            : null,
         'artifactDirPersistent' => !$ownedDirectory,
     ];
     if ($jsonOutput) {
@@ -260,9 +271,10 @@ try {
             JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";
     } else {
         printf("PHX-VM T2 end-to-end / PHP %s (%s), n=%d, trials=%d\n", PHP_VERSION, PHP_OS_FAMILY, $n, $samples);
-        printf("OPcache CLI=%s, file_cache=%s, file_update_protection=%s, JIT=%s\n",
+        printf("OPcache CLI=%s, file_cache=%s, file_update_protection=%s, JIT config=%s, JIT active=%s\n",
             $environment['opcacheEnableCli'], $environment['opcacheFileCacheConfigured'] ? 'configured' : 'unset',
-            $environment['opcacheFileUpdateProtection'], $environment['opcacheJit']);
+            $environment['opcacheFileUpdateProtection'], $environment['opcacheJitConfigured'],
+            var_export($environment['opcacheJitActive'], true));
         foreach ($measurements as $m) {
             printf("\n%s (%d bytecode instructions)\n", $m['workload'], $m['originalInstructions']);
             printf("  T0: verify+run %.3f ms; warm run %.3f ms\n",
