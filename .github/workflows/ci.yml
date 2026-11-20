@@ -23,6 +23,8 @@ jobs:
         run: php tests/run.php
       - name: Differential tests T0 vs T1
         run: php tests/t1.php
+      - name: T1 superinstruction differential tests
+        run: php tests/fusion.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
