@@ -123,6 +123,29 @@ Con almeno tre campioni completati e un carico minimo predefinito di 100 passi, 
 
 `tests/tiering.php` confronta T0 con/senza profiler per risultati, classi e messaggi di errore e budget esatti; controlla opcode per funzione, profondità di frame, ricorsione profonda, accumulatori, reset e input patologici della policy. `bench/tiering.php` misura separatamente T0 non strumentato, T2 già caricato e preparazione T2, senza applicare automaticamente alcuna decisione.
 
+## Cache compilata persistente (PR #9)
+
+La cache `PhpArtifactCache` è un componente opzionale fra `Program` verificato e `PhpVm`. Non è una nuova VM, non modifica il bytecode canonico e non avvia autonomamente il tiering:
+
+~~~text
+Program + entry + flags + PHP version + fingerprint compilatore
+    |
+    v
+Verifier --> SHA-256 key --> private directory / lock
+                         |--> hit: check manifest + hash(source) --> require --> PhpVm
+                         |--> miss: PhpEmitter --> atomically publish --> require --> PhpVm
+~~~
+
+La chiave deriva dalla serializzazione deterministica delle funzioni (nome, firma, tipi dei registri e istruzioni), delle costanti, della funzione di ingresso e delle opzioni T2 (inlining e conservazione dei soli registri vivi). Include `PHP_VERSION_ID`, il numero di formato cache e l'impronta dei file sorgente di compilatore/verificatore/runtime. Un cambio implementativo rigenera dunque una nuova chiave dopo il riavvio del processo PHP. In processi a lunga vita occorre riavviare i worker dopo l'aggiornamento dei file del compilatore: l'impronta resta volutamente stabile per tutta la vita di un processo che usa la stessa versione di codice.
+
+La cache conserva due file per chiave: `phx-<hash>.php` e `phx-<hash>.meta.json`. Il manifest contiene hash SHA-256 e lunghezza del PHP. Un hit verifica sempre il Program e il file prima del require. Una coppia incompleta o danneggiata è eliminata e rigenerata. La pubblicazione usa file temporanei nella stessa directory, rename atomici (PHP prima, manifest dopo) e un lock interprocesso `flock` che copre verifica, caricamento e pulizia per impedire corse fra writer/reader/evictor che usano la stessa cache.
+
+**Confine di sicurezza:** il PHP generato è codice eseguibile nell'host. Non esiste sandbox: l'accesso alla directory deve essere limitato al proprietario dell'applicazione (0700 su POSIX), mai a utenti non fidati; le directory symlink sono rifiutate. Qualunque writer estraneo che riesca a sostituire sia PHP sia manifest all'interno della directory è fuori dal modello di sicurezza. Il verificatore dei bytecode non sostituisce le protezioni di processo/filesystem.
+
+**Limiti:** default 256 entry, 64 MiB di sorgente PHP cumulativo e 4 MiB per artefatto. Il pruning rimuove solo i file gestiti dalla cache e usa il timestamp del manifest come indicazione del riuso più recente. OPcache può trattenere copie in memoria finché non invalidato; una rimozione della cache filesystem non è una misura immediata della memoria fisica liberata. Il lock privilegia la correttezza; in presenza di molta concorrenza la sua contesa va profilata in una fase successiva.
+
+`tests/cache.php` verifica miss/hit, riuso fra istanze, chiavi per flag e programmi, integrità della coppia, riparazione, symlink, limiti, pulizia e comportamento T0/T2. `tests/cache-worker.php` viene avviato da più processi CLI contemporanei nella CI. `bench/cache.php` misura separatamente costi di primo caricamento, hit verificato e sola esecuzione della closure già caricata, senza soglie prestazionali.
+
 ## Misurazione
 
 Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso programma di somma iterativa verificato, stampa le mediane di sette prove, la versione PHP, l'impostazione OPcache/JIT e il rapporto dei tempi. Non include costi di preparazione del programma e non stabilisce un guadagno generale. Per dichiarare un miglioramento occorrono workload differenti, controllo del rumore, benchmark con costi di preparazione e confronto con PHP nativo semanticamente equivalente.
@@ -138,12 +161,14 @@ php tests/t2-calls.php
 php tests/inlining.php
 php tests/liveness.php
 php tests/tiering.php
+php tests/cache.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/inline.php 20000
 php bench/frames.php 2000
 php bench/end-to-end.php 2000 7
 php bench/tiering.php 2000 100
+php bench/cache.php 2000 7
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
