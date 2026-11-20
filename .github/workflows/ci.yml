@@ -43,3 +43,16 @@ jobs:
         run: php bench/frames.php 250
       - name: Call and recursion benchmark smoke (no speed threshold)
         run: php bench/calls.php 1000
+- name: End-to-end compile/write/load/execute benchmark (no speed threshold)
+        run: php bench/end-to-end.php 400 3
+      - name: OPcache stable artifacts across two CLI processes (no speed threshold)
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts="$RUNNER_TEMP/phx-vm-e2e-artifacts"
+          file_cache="$RUNNER_TEMP/phx-vm-opcache-filecache"
+          mkdir -p "$artifacts" "$file_cache"
+          php -d opcache.enable_cli=1 -d opcache.file_cache="$file_cache" -d opcache.file_update_protection=0 bench/end-to-end.php 400 3 "$artifacts"
+          php -d opcache.enable_cli=1 -d opcache.file_cache="$file_cache" -d opcache.file_update_protection=0 bench/end-to-end.php 400 3 "$artifacts" | tee "$RUNNER_TEMP/phx-e2e-second-run.log"
+          test "$(grep -c 'Stable artifact: reused' "$RUNNER_TEMP/phx-e2e-second-run.log")" -eq 3
+          test "$(find "$artifacts" -maxdepth 1 -type f -name 'phx-*.php' | wc -l)" -eq 3
