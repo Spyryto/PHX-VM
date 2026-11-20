@@ -6,7 +6,9 @@ namespace PhxVm;
 /**
  * Opt-in execution tier manager: immediate T0, then cached T2 if worthwhile.
  *
- * - Without per-entry calibration it ALWAYS stays on instrumented T0.
+ * - Without per-entry calibration it ALWAYS stays on T0.
+ * - Default profile is lightweight (per-entry run count + original steps),
+ *   not per-instruction profiling. Full instrumentation is opt-in.
  * - Promotion is checked only AFTER enough completed T0 executions exist.
  * - T2 is loaded once per entry and the PhpVm closure is kept in memory.
  * - Compilation/cache failure can safely fall back to T0: no bytecode has
@@ -50,9 +52,13 @@ final class AdaptiveVm
         private readonly bool $inline = true,
         private readonly bool $trimFrames = true,
         private readonly bool $fallbackOnCompilationFailure = true,
+        private readonly bool $detailedProfiling = false,
     ) {
         $this->profile = new ExecutionProfile();
-        $this->interpreter = new Vm($program, $this->profile);
+        // The adaptive policy needs only successful run counts and original
+        // instruction counts. Default to uninstrumented T0 so cold execution
+        // remains fast; per-op profiling is explicitly opt-in.
+        $this->interpreter = new Vm($program, $detailedProfiling ? $this->profile : null);
         $this->policy = $policy ?? new TieringPolicy();
         foreach ($calibrations as $entry => $calibration) {
             if (!is_int($entry) || !$calibration instanceof TieringCalibration) {
@@ -159,13 +165,23 @@ final class AdaptiveVm
             }
         }
 
-        // Instrumented T0 supplies counters only, not timing calibration.
+        // Lightweight root profiling avoids a counter operation per opcode.
+        // Detailed profiling remains available, but is not needed for tiering.
+        $recordRoot = !$this->detailedProfiling
+            && $this->validArguments($functionId, $args, $maxSteps);
+        if ($recordRoot) $this->profile->startRun($functionId);
+        $completed = false;
         $this->t0Runs[$functionId] = ($this->t0Runs[$functionId] ?? 0) + 1;
         $this->lastBackend = 'T0';
         try {
-            return $this->interpreter->run($functionId, $args, $maxSteps);
+            $result = $this->interpreter->run($functionId, $args, $maxSteps);
+            $completed = true;
+            return $result;
         } finally {
             $this->lastSteps = $this->interpreter->lastSteps();
+            if ($recordRoot) {
+                $this->profile->finishRun($functionId, $this->lastSteps, $completed);
+            }
         }
     }
 
