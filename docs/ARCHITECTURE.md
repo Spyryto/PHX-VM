@@ -146,6 +146,35 @@ La cache conserva due file per chiave: `phx-<hash>.php` e `phx-<hash>.meta.json`
 
 `tests/cache.php` verifica miss/hit, riuso fra istanze, chiavi per flag e programmi, integrità della coppia, riparazione, symlink, limiti, pulizia e comportamento T0/T2. `tests/cache-worker.php` viene avviato da più processi CLI contemporanei nella CI. `bench/cache.php` misura separatamente costi di primo caricamento, hit verificato e sola esecuzione della closure già caricata, senza soglie prestazionali.
 
+## AdaptiveVm — runtime a tier indipendenti (PR #10)
+
+`AdaptiveVm` riunisce T0 con profiling, politica di selezione e cache compilata. Nessun cambiamento all'ISA e nessun backend Nail-specifico:
+
+~~~text
+AdaptiveVm.run(entry, args, budget)
+          |
+          +--> entry già T2 ------> PhpVm resident --> risultato / errore
+          |
+          +--> non calibrata -----> T0 + profiler
+          |
+          +--> policy: collect_more / stay_t0 ---> T0 + profiler
+          |
+          +--> policy: candidate_t2
+                   |
+                   +--> cache.load (verifica, emissione se miss, require)
+                            |--> successo: memorizza PhpVm --> esegui T2
+                            |--> fallimento prima dell'esecuzione:
+                                 segna fallimento --> T0 (se fallback abilitato)
+~~~
+
+L'unità di promozione è la funzione di ingresso richiesta tramite `run()`; ogni entry ha campioni e calibrazione propri. Le funzioni interne rimangono eseguite tramite la semantica `CALL`/`TAILCALL` del backend scelto per quell'ingresso. Non si effettuano switch all'interno di una singola invocazione: sarebbe necessario preservare esattamente il contesto di esecuzione e gli effetti del programma.
+
+La promozione richiede campioni T0 completati e valori espliciti `TieringCalibration` ottenuti da misurazioni esterne a T0 profilato. Le metriche non vengono rilevate automaticamente dall'esecutore: il profiling inserisce overhead e falserebbe i confronti. La promozione si valuta **prima** di una chiamata valida successiva al completamento dei campioni; se il compilatore produce un artefatto valido, la stessa invocazione viene eseguita direttamente in T2. La closure PHP compilata è memorizzata per l'intera vita dell'istanza AdaptiveVm, eliminando hit ripetuti su disco, hashing del PHP e nuovi require.
+
+Le eccezioni sono gestite in fasi distinte. Gli errori della compilazione/verifica della cache possono causare fallback T0 poiché non è stata ancora eseguita alcuna istruzione del programma. Non vengono ri-tentati automaticamente fino a una modifica esplicita della calibrazione o `demote()`. Un'eccezione emessa da `PhpVm::run()` viene invece propagata senza ri-esecuzione: fare fallback dopo l'inizio dell'esecuzione potrebbe duplicare effetti, quando arriveranno I/O e FFI. `lastSteps()` si aggiorna in un blocco finally su ciascun tier e conserva la semantica di T0 anche sul superamento del budget. Gli errori degli argomenti non attivano compilazione né generano campioni profilati.
+
+`tests/adaptive.php` confronta risultati, errori e budget dei due tier; verifica confini della promozione, errori durante il T2, ricorsione profonda, indici funzione indipendenti, istanze diverse che condividono la cache, demotion, assenza di calibrazione e guasti del compilatore con fallback o propagazione. `bench/adaptive.php` calibra i costi tramite un T0 *non profilato* e un T2 già caricato, quindi osserva il tier scelto su nove invocazioni. I risultati non sono soglie universali e non includono PHP-FPM persistente.
+
 ## Misurazione
 
 Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso programma di somma iterativa verificato, stampa le mediane di sette prove, la versione PHP, l'impostazione OPcache/JIT e il rapporto dei tempi. Non include costi di preparazione del programma e non stabilisce un guadagno generale. Per dichiarare un miglioramento occorrono workload differenti, controllo del rumore, benchmark con costi di preparazione e confronto con PHP nativo semanticamente equivalente.
@@ -162,6 +191,7 @@ php tests/inlining.php
 php tests/liveness.php
 php tests/tiering.php
 php tests/cache.php
+php tests/adaptive.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/inline.php 20000
@@ -169,6 +199,7 @@ php bench/frames.php 2000
 php bench/end-to-end.php 2000 7
 php bench/tiering.php 2000 100
 php bench/cache.php 2000 7
+php bench/adaptive.php 2000 100
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
