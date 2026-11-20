@@ -11,7 +11,7 @@ Linguaggio / IR
 Program PHX verificato
       |
       +--> T0: interprete a registri     [implementato]
-      +--> T1: basic block / fusioni     [futuro]
+      +--> T1: blocchi predecodificati    [prototipo]
       +--> T2: PHP diretto + OPcache     [futuro]
 ~~~
 
@@ -56,7 +56,7 @@ Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C p
 
 ## Specializzazione futura
 
-**T1:** decodifica preparata, superistruzioni e dispatch per basic block, senza modificare i risultati osservabili o nascondere i punti di errore. Le superistruzioni devono rispettare la semantica di budget scelta.
+**T1 (prototipo):** BlockCompiler verifica il programma e prepara per ogni funzione una mappa da PC originale a basic block con istruzioni [opcode,A,B,C] già decodificate. I leader comprendono ingresso, destinazioni dei salti, fallthrough e punti di ripresa dopo CALL. BlockVm esegue un blocco per volta, mantiene PC e frame equivalenti a T0, e carica un'unità di budget per ogni istruzione originale. Il ciclo interno utilizza ancora uno switch per opcode; pertanto questa versione non elimina il dispatch per istruzione e non promette un guadagno di velocità. Superistruzioni e dispatch veramente fuso sono ancora futuri. Il bytecode persistente rimane invariato.
 
 **T2:** traduzione della MachineIR a PHP nativo, con variabili locali, cicli e chiamate dirette. Una funzione ricorsiva terminale può diventare un while. Le ricorsioni non terminali continuano a richiedere frame espliciti salvo trasformazioni giustificate semanticamente.
 
@@ -66,13 +66,15 @@ Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C p
 
 ## Misurazione
 
-Non sono stati stabiliti benchmark o speedup rispetto a PHP nativo. Misurare T0 rispetto a un interprete di riferimento e a PHP manuale semanticamente equivalente, con versione PHP e configurazione OPcache/JIT documentate, prima di fare affermazioni di prestazioni.
+Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso programma di somma iterativa verificato, stampa le mediane di sette prove, la versione PHP, l'impostazione OPcache/JIT e il rapporto dei tempi. Non include costi di preparazione del programma e non stabilisce un guadagno generale. Per dichiarare un miglioramento occorrono workload differenti, controllo del rumore, benchmark con costi di preparazione e confronto con PHP nativo semanticamente equivalente.
 
 ## Uso
 
 ~~~sh
 php tests/run.php
+php tests/t1.php
 php examples/sum-tail.php 10000
+php bench/compare.php 30000
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
