@@ -5,8 +5,8 @@ namespace PhxVm;
 
 /**
  * T2 compiler: emits a PHP closure with local registers and direct goto edges.
- * No eval, function calls, runtime dispatch or writable bytecode. v0 supports
- * only the call-free ISA subset; unsupported operations fail explicitly.
+ * No eval or writable bytecode. The call-free path generates PHP locals
+ * and direct branches; direct CALL/TAILCALL uses CallPhpEmitter.
  */
 final class PhpEmitter
 {
@@ -22,9 +22,10 @@ final class PhpEmitter
         foreach ($code as $word) {
             $op = Instruction::op($word);
             if ($op === Opcode::CALL || $op === Opcode::TAILCALL) {
-                throw new UnsupportedCompilationException(
-                    'T2 cannot yet compile CALL or TAILCALL; run with T0/T1 instead'
-                );
+                // Preserve the original call-free fast path. Program-level
+                // direct calls use one generated PHP closure and an explicit
+                // stack of return continuations instead of PHP recursion.
+                return CallPhpEmitter::source($program, $functionId);
             }
             if (in_array($op, [Opcode::JMP, Opcode::BR_TRUE, Opcode::BR_FALSE], true)) {
                 $leaders[Instruction::bx($word)] = true;
