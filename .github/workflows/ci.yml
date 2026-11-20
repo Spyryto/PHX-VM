@@ -37,6 +37,8 @@ jobs:
         run: php tests/tiering.php
       - name: T2 persistent compiled artifact cache correctness
         run: php tests/cache.php
+      - name: AdaptiveVm T0-to-T2 differential and fallback tests
+        run: php tests/adaptive.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
