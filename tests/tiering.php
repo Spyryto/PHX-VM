@@ -213,4 +213,17 @@ foreach ([[0, 100, 1.5], [3, 0, 1.5], [3, 100, INF], [3, 100, 0.5]] as $cfg) {
     }
 }
 
+// Values may be individually finite but their projected products can overflow.
+foreach ([
+    [PHP_INT_MAX, PHP_FLOAT_MAX, 0.0, 0.0],
+    [10, 0.0001, 0.0, PHP_FLOAT_MAX],
+] as [$future, $t0Cost, $t2Cost, $preparation]) {
+    try {
+        $policy->assess($p, 0, $future, $t0Cost, $t2Cost, $preparation);
+        throw new RuntimeException('Overflowing tier prediction unexpectedly accepted');
+    } catch (InvalidArgumentException $expected) {
+        profileCheck(true, 'non-finite projected tiering costs rejected');
+    }
+}
+
 echo "T0 profiler and tiering policy differential suite: $checks checks passed\n";
