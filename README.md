@@ -19,6 +19,7 @@ php bench/compare.php 30000
 php bench/calls.php 10000
 php bench/inline.php 20000
 php bench/frames.php 2000
+php bench/end-to-end.php 2000 7
 ~~~
 
 - **T0: PhxVm\Vm** executes compact verified 32-bit register bytecode.
@@ -35,9 +36,23 @@ php bench/frames.php 2000
 
 **Trust boundary:** generated PHP is **host code**, not a sandbox. Do not load externally supplied PHP files or untrusted source. The generated source may benefit from OPcache on stable filenames. Benchmarks exclude source generation and loading costs; the interprocedural path may be slower on small or cold programs. No JIT, closure values, indirect calls, or automatic transformation of non-tail recursion into a constant-memory algorithm is implemented.
 
-Benchmarks: `bench/calls.php` compares tail and non-tail recursive workloads using T0, fused T1 and interprocedural T2; compilation and file loading times are printed separately from runtime medians. These quick measurements are not full OPcache/JIT studies.
+**End-to-end and OPcache experiment:** `php bench/end-to-end.php 2000 7` compares T0 construction+run, T0 warm run, T2 cold (verified generation + write + require + first execution), T2 warm closure execution, and T2 repeated require+run from a stable content-addressed artifact. The benchmark includes a call-free loop and a leaf-call loop, with/without inlining. Correctness and original bytecode instruction budgets are checked on every run. Reports are observational; there are no performance thresholds in CI.
 
-Next experiments: broader workloads, end-to-end compilation/OPcache measurements, and control-flow-aware inlining. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
+For an OPcache experiment that spans two independent CLI processes, enable CLI OPcache explicitly and **reuse both directories**:
+
+~~~sh
+mkdir -p /tmp/phx-vm-artifacts /tmp/phx-vm-opcache
+php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache \
+  -d opcache.file_update_protection=0 bench/end-to-end.php 2000 7 /tmp/phx-vm-artifacts
+php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache \
+  -d opcache.file_update_protection=0 bench/end-to-end.php 2000 7 /tmp/phx-vm-artifacts
+~~~
+
+Use a **private, trusted cache directory**. Content-hashed filenames are immutable and checked before being required; never load generated PHP from untrusted locations. Disabling the newly-written-file protection is appropriate only in this controlled benchmark for immutable files; do not copy that setting blindly to a production environment.
+
+`opcache_is_script_cached()` and script hit counters are reported when available. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
+
+Next experiments: long-lived PHP-FPM/worker measurement, cold and warm OPcache with realistic request routing, and control-flow-aware inlining. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the bytecode ISA, correctness rules and planned tiers.
 
