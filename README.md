@@ -14,6 +14,7 @@ php tests/t2.php
 php tests/t2-calls.php
 php tests/inlining.php
 php tests/liveness.php
+php tests/tiering.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/calls.php 10000
@@ -21,6 +22,7 @@ php bench/inline.php 20000
 php bench/frames.php 2000
 php bench/end-to-end.php 2000 7
 php bench/end-to-end.php 2000 7 --json
+php bench/tiering.php 2000 100
 ~~~
 
 - **T0: PhxVm\Vm** executes compact verified 32-bit register bytecode.
@@ -34,6 +36,10 @@ php bench/end-to-end.php 2000 7 --json
 **T2 opt-in leaf inlining:** `PhpEmitter::source($program, $entry, true)` directly incorporates small straight-line leaf callees (at most 8 original bytecode instructions, final RET, no branch or nested CALL) into the generated PHP. Each callsite has its own private register variables. The original CALL charge and every callee instruction charge remain observable, including exception ordering and `lastSteps()`. An inlined CALL does not allocate a continuation; an inlined TAILCALL returns through its existing outer continuation. Code growth is capped at 128 duplicated original instructions per compiled module. **Disabled by default**; recursive, branched and larger functions retain the ordinary T2 path. No change to the PHX bytecode ISA.
 
 **T2 opt-in live-register continuations:** `PhpEmitter::source($program, $entry, false, true)` enables backward register liveness analysis to save only the caller registers actually needed after each non-inlined `CALL`. The return destination is excluded because the callee overwrites it. Control-flow joins, loops and branches are analyzed to a fixed point. `TAILCALL` still adds no continuation. It can also be combined with inlining via `PhpEmitter::source($program, $entry, true, true)`. The default frame representation is **unchanged**. Each original instruction still consumes one unit of the execution budget and has the same exception order as T0.
+
+**T0 profiler (opt-in):** pass `new ExecutionProfile()` as the second argument to `new Vm($program, $profile)`. The profiler accumulates deterministic charged-opcode counts, function entries, CALL/TAILCALL/RET counts, logical continuation depth and per-entry successful/failed run statistics. It also records budget-rejected attempts separately; `lastSteps()` continues to include the rejected attempt exactly as before. Use `$profile->snapshot()` for a sorted report and `$profile->reset()` to clear it. Without a profile object, T0 keeps its usual execution path.
+
+**Tiering policy (advisory, no automatic compilation):** `TieringPolicy::assess($profile, $entry, $futureRuns, $t0MsPerStep, $t2MsPerStep, $compileAndLoadMs)` returns `collect_more`, `stay_t0` or `candidate_t2`. A candidate means only that the supplied calibration estimates that sufficient future work will amortize T2 preparation, after an adjustable safety factor. Default gates require at least 3 completed samples and 100 instructions per successful execution. Supply *externally measured* T0/T2 costs from equivalent workloads and the same host. **Do not calibrate using time measurements from the instrumented T0:** counter collection adds overhead. The command `php bench/tiering.php 2000 100` demonstrates independent calibration using uninstrumented T0 and precompiled/warm T2; it never switches the running VM. Estimates are not universal guarantees, and the policy has no persistent cache awareness yet.
 
 **Trust boundary:** generated PHP is **host code**, not a sandbox. Do not load externally supplied PHP files or untrusted source. The generated source may benefit from OPcache on stable filenames. Benchmarks exclude source generation and loading costs; the interprocedural path may be slower on small or cold programs. No JIT, closure values, indirect calls, or automatic transformation of non-tail recursion into a constant-memory algorithm is implemented.
 
@@ -53,7 +59,7 @@ Use a **private, trusted cache directory**. Content-hashed filenames are immutab
 
 `opcache_is_script_cached()` and script hit counters are reported when available; the report also distinguishes configured JIT settings from an actually active JIT. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
 
-Next experiments: long-lived PHP-FPM/worker measurement, cold and warm OPcache with realistic request routing, and control-flow-aware inlining. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
+Next experiments: immutable compiled-artifact caching (PR #9), then an opt-in AdaptiveVm that applies an explicitly tested tiering policy (PR #10), followed by persistent PHP-FPM/worker measurements. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the bytecode ISA, correctness rules and planned tiers.
 
