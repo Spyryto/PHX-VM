@@ -12,10 +12,11 @@ namespace PhxVm;
  * CALL saves the caller's registers; TAILCALL replaces the activation.
  *
  * No PHP recursive calls, eval, opcode dispatch or user-controlled PHP code.
+ * Optional leaf inlining uses private register banks and a compile-time budget.
  */
 final class CallPhpEmitter
 {
-    public static function source(Program $program, int $entry): string
+    public static function source(Program $program, int $entry, bool $inline = false): string
     {
         Verifier::verify($program);
         if (!isset($program->functions[$entry])) {
@@ -74,6 +75,10 @@ final class CallPhpEmitter
         $lines[] = '    try {';
         $lines[] = '        goto F' . $entry . '_B0;';
 
+        // Bound compile-time growth even for programs with many callsites.
+        // Count copied *original* bytecode words, not synthetic PHP lines.
+        $remainingInlineOps = $inline ? InlineEmitter::MAX_TOTAL_COPIED_INSTRUCTIONS : 0;
+
         /** @var list<array{id:int, pc:int, dest:int, registers:int}> $continuations */
         $continuations = [];
         foreach ($functionIds as $id) {
@@ -128,6 +133,17 @@ final class CallPhpEmitter
                     case Opcode::CALL:
                     case Opcode::TAILCALL:
                         $callee = $program->functions[$b];
+                        if ($remainingInlineOps >= count($callee->code)
+                            && InlineEmitter::eligible($callee)) {
+                            foreach (InlineEmitter::emit(
+                                $program, $callee, $id, $pc, $c, $a,
+                                $op === Opcode::TAILCALL
+                            ) as $line) {
+                                $lines[] = $line;
+                            }
+                            $remainingInlineOps -= count($callee->code);
+                            break;
+                        }
                         if ($op === Opcode::CALL) {
                             $continuationId = count($continuations);
                             $continuations[] = [
