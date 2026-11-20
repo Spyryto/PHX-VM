@@ -80,6 +80,34 @@ Per non rallentare il caso comune, il backend **mantiene il precedente percorso 
 
 **Dati e semantiche:** valori strutturati, interi arbitrari, float, record, rappresentazioni di stringhe/array, gestione effetti e capability dovranno essere specificati prima di ottimizzarli.
 
+## Esperimento end-to-end e OPcache
+
+Il benchmark `bench/end-to-end.php` separa esplicitamente:
+
+- **T0 nuovo per ogni run:** costruzione/verifica + prima esecuzione;
+- **T0 caldo:** esecuzione su istanza già verificata;
+- **T2 freddo:** verifier e generazione PHP, scrittura di un nuovo file, `require`, prima esecuzione;
+- **T2 caldo:** ripetizione della closure già caricata;
+- **T2 path stabile:** `require` di un artefatto immutabile identificato da SHA-256 del sorgente, seguito dall'esecuzione, più raccolta telemetria OPcache ove disponibile.
+
+Misura almeno due workload distinti, uno senza chiamate e uno con invocazioni frequenti di una funzione leaf, con e senza inlining. Ogni risultato e numero di istruzioni canoniche viene confrontato con T0. I tempi mediani dei componenti sono calcolati separatamente e non devono essere sommati come se appartenessero alla stessa prova temporale.
+
+Il percorso con file stabile è intenzionalmente **content-addressed**: un file con hash noto non viene sovrascritto; se il contenuto presente ha hash diverso la misurazione fallisce invece di richiedere codice estraneo. La directory deve essere privata e controllata dall'esecutore. I file temporanei del percorso freddo sono sempre nuovi e rimossi dopo il caricamento.
+
+### Cosa dimostra OPcache, e cosa no
+
+Il riuso di una closure non dimostra OPcache: equivale solo a non ricompilare codice già in memoria. Un `require` ripetuto nello stesso processo può sfruttare OPcache quando la CLI è esplicitamente abilitata e la telemetria `opcache_is_script_cached` e gli hit lo confermano; non è un benchmark FPM. Due processi CLI possono condividere una directory `opcache.file_cache`, ma il semplice fatto di trovare nuovamente il file non prova che il bytecode sia stato caricato dalla cache su disco; l'API di stato può inoltre variare con `opcache.file_cache_only` e la configurazione del runtime.
+
+Un controllo riproducibile con file hashati e privati può usare:
+
+~~~sh
+mkdir -p /tmp/phx-vm-artifacts /tmp/phx-vm-opcache
+php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache -d opcache.file_update_protection=0 bench/end-to-end.php 2000 7 /tmp/phx-vm-artifacts
+php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache -d opcache.file_update_protection=0 bench/end-to-end.php 2000 7 /tmp/phx-vm-artifacts
+~~~
+
+La protezione per file recenti (`opcache.file_update_protection`) può impedire la cache di un file appena generato; il valore zero qui è soltanto un controllo sperimentale su file immutabili, **non** una raccomandazione di configurazione globale. Il benchmark non include bootstrap CLI, process spawning, richieste HTTP, rete, FPM, cache warm di un server persistente o utilizzo reale di memoria. Sono misure future.
+
 ## Misurazione
 
 Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso programma di somma iterativa verificato, stampa le mediane di sette prove, la versione PHP, l'impostazione OPcache/JIT e il rapporto dei tempi. Non include costi di preparazione del programma e non stabilisce un guadagno generale. Per dichiarare un miglioramento occorrono workload differenti, controllo del rumore, benchmark con costi di preparazione e confronto con PHP nativo semanticamente equivalente.
@@ -98,6 +126,7 @@ php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/inline.php 20000
 php bench/frames.php 2000
+php bench/end-to-end.php 2000 7
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
