@@ -94,6 +94,8 @@ try {
     }
     adaptiveCheck($adaptive->profile()->rootStats(1)['completed'] === 3,
         'profile accumulates exactly three successful T0 samples');
+    adaptiveCheck($adaptive->profile()->snapshot()['functions'] === [],
+        'default lightweight T0 observations avoid per-instruction opcode profiling');
     adaptiveCheck($adaptive->stats(1)['compilationAttempts'] === 0,
         'no compilation during sampling');
     adaptiveCheck(compareAdaptive($reference, $adaptive, 1, [4], 100)[1] === serialize(12),
@@ -258,6 +260,28 @@ try {
         compareAdaptive($recursiveReference, $recursive, 0, [7], $budget);
     }
     adaptiveCheck($recursive->lastBackend() === 'T2', 'deep compiled tier stays active');
+
+    // Full instrumentation remains opt-in and must not change semantics or
+    // the completed-run threshold used for tier promotion.
+    $detailed = new AdaptiveVm(
+        $program, $cache, [1 => $calibration], $policy,
+        detailedProfiling: true
+    );
+    for ($i = 0; $i < 3; ++$i) {
+        compareAdaptive($reference, $detailed, 1, [12], 100);
+    }
+    $detailedSnapshot = $detailed->profile()->snapshot();
+    adaptiveCheck($detailedSnapshot['functions'][0]['entries'] === 3
+        && $detailedSnapshot['functions'][1]['entries'] === 3,
+        'opt-in detailed mode counts both caller and callee function entries');
+    adaptiveCheck($detailedSnapshot['functions'][0]['opcodes'][O::IADD] === 3
+        && $detailedSnapshot['functions'][1]['opcodes'][O::CALL] === 3,
+        'opt-in detailed mode records actual bytecode opcode counts');
+    adaptiveCheck($detailed->profile()->rootStats(1)['completed'] === 3,
+        'detailed profile still uses exact completed-root counts');
+    compareAdaptive($reference, $detailed, 1, [12], 100);
+    adaptiveCheck($detailed->lastBackend() === 'T2' && $detailed->tier(1) === 'T2',
+        'detailed profile promotes at same completion threshold');
 
     // Construction and configuration must remain strict.
     try {
