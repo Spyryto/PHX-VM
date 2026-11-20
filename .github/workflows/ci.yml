@@ -51,6 +51,8 @@ jobs:
         run: php bench/calls.php 1000
       - name: Tiering calibration demo (no speed threshold)
         run: php bench/tiering.php 400 30
+      - name: AdaptiveVm tier-switch benchmark smoke (no speed threshold)
+        run: php bench/adaptive.php 400 30
       - name: T2 persistent-cache benchmark smoke (no speed threshold)
         run: php bench/cache.php 250 3
       - name: End-to-end compile/write/load/execute benchmark (no speed threshold)
