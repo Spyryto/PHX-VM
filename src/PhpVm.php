@@ -1,0 +1,31 @@
+<?php
+declare(strict_types=1);
+
+namespace PhxVm;
+
+/** Runs a trusted PhpEmitter-generated file; PHP opcode loading is the host's. */
+final class PhpVm
+{
+    private readonly \Closure $runner;
+    private int $lastSteps = 0;
+
+    public function __construct(private readonly int $functionId, string $filePath)
+    {
+        $runner = require $filePath;
+        if (!$runner instanceof \Closure) {
+            throw new \InvalidArgumentException('T2 file must return a closure');
+        }
+        $this->runner = $runner;
+    }
+
+    public function lastSteps(): int { return $this->lastSteps; }
+
+    /** @param list<int|float|bool|string|null> $args */
+    public function run(int $functionId, array $args = [], int $maxSteps = 1000000): mixed
+    {
+        $this->lastSteps = 0;
+        if ($maxSteps < 1) throw new \InvalidArgumentException('maxSteps must be positive');
+        if ($functionId !== $this->functionId) throw new \InvalidArgumentException('Unknown function ID');
+        return ($this->runner)($args, $maxSteps, $this->lastSteps);
+    }
+}
