@@ -68,6 +68,10 @@ Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C p
 
 Per non rallentare il caso comune, il backend **mantiene il precedente percorso T2 senza chiamate** quando la funzione d'ingresso non usa `CALL/TAILCALL`. La ricorsione non terminale richiede memoria per le continuazioni proporzionale alla profondità logica; non viene convertita automaticamente in un algoritmo iterativo a memoria costante. Non è presente un modello di closure o chiamata indiretta: sono funzionalità future.
 
+**T2 inlining selettivo (opt-in):** `PhpEmitter::source($program, $entry, true)` abilita l'incorporazione di funzioni *leaf* senza salti, chiamate annidate o ritorni anticipati, lunghe al massimo 8 istruzioni canoniche. Ogni callsite incorpora un insieme di registri PHP privati, un'inizializzazione simultanea degli argomenti e le istruzioni del callee nello stesso ordine originale; `CALL` non crea frame e il `RET` finale scrive direttamente nel registro di destinazione. `TAILCALL` restituisce il risultato alla continuazione preesistente, senza allocare frame aggiuntivi. Il controllo del budget precede ogni operazione come in T0: la CALL e ciascuna operazione inlined, incluso RET, hanno costo unitario; errori e conteggio rimangono confrontabili anche sui limiti del budget. Per contenere la crescita del sorgente sono duplicabili al massimo 128 istruzioni originali nell'intero modulo compilato. Funzioni ricorsive, con branching o troppo grandi mantengono il percorso tradizionale. L'ottimizzazione è disabilitata per default ed è specifica del backend PHP, senza alterare il bytecode canonico né introdurre dipendenze da Nail.
+
+**Benchmark inlining:** `php bench/inline.php 20000` misura, sullo stesso bytecode che chiama una funzione foglia in un ciclo, T0 e T2 con/senza inlining. Espone separatamente generazione sorgente, caricamento e mediana del runtime; non misura il riuso OPcache cross-request e non impone alcuna soglia di speedup.
+
 **Supporto funzionale:** closure, ambienti catturati, chiamate indirette specializzate, applicazione parziale e pattern matching. Queste capacità non devono dipendere da Nail.
 
 **Dati e semantiche:** valori strutturati, interi arbitrari, float, record, rappresentazioni di stringhe/array, gestione effetti e capability dovranno essere specificati prima di ottimizzarli.
@@ -84,8 +88,10 @@ php tests/t1.php
 php tests/fusion.php
 php tests/t2.php
 php tests/t2-calls.php
+php tests/inlining.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
+php bench/inline.php 20000
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
