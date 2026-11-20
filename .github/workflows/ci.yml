@@ -39,6 +39,10 @@ jobs:
         run: php tests/cache.php
       - name: AdaptiveVm T0-to-T2 differential and fallback tests
         run: php tests/adaptive.php
+      - name: Binary PHX bytecode v1 format and differential tests
+        run: php tests/codec.php
+      - name: Binary bytecode import/export example
+        run: php examples/bytecode.php 500
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
