@@ -13,13 +13,13 @@ namespace PhxVm;
  */
 final class BlockVm
 {
-    /** @var list<array<int, list<array{int, int, int, int}>>> */
+    /** @var list<array<int, list<list<int>>>> */
     private readonly array $blocks;
     private int $lastSteps = 0;
 
-    public function __construct(private readonly Program $program)
+    public function __construct(private readonly Program $program, bool $fuse = false)
     {
-        $this->blocks = BlockCompiler::prepare($program);
+        $this->blocks = BlockCompiler::prepare($program, $fuse);
     }
 
     public function lastSteps(): int { return $this->lastSteps; }
@@ -31,6 +31,21 @@ final class BlockVm
             throw new \InvalidArgumentException('Unknown function ID');
         }
         return array_keys($this->blocks[$functionId]);
+    }
+
+    /** Count synthetic instructions; useful to prove the fast path was selected. */
+    public function superinstructionCount(int $functionId): int
+    {
+        if (!isset($this->blocks[$functionId])) {
+            throw new \InvalidArgumentException('Unknown function ID');
+        }
+        $count = 0;
+        foreach ($this->blocks[$functionId] as $operations) {
+            foreach ($operations as $instruction) {
+                if ($instruction[0] < 0) ++$count;
+            }
+        }
+        return $count;
     }
 
     /** @param list<int|float|bool|string|null> $args */
@@ -70,6 +85,41 @@ final class BlockVm
                     [$op, $a, $b, $c] = $instruction;
                     ++$pc; // Keep the original instruction-index PC.
                     switch ($op) {
+                        case Superopcode::IADD_ISUB:
+                            // First bytecode instruction. Preserve its exception
+                            // point before charging or executing the second.
+                            $value = $r[$b] + $r[$c];
+                            if (!is_int($value)) throw new VmFault('Integer overflow in IADD');
+                            $r[$a] = $value;
+                            if (++$steps > $maxSteps) {
+                                throw new ExecutionLimitExceeded('Instruction budget exceeded');
+                            }
+                            ++$pc;
+                            $value = $r[$instruction[5]] - $r[$instruction[6]];
+                            if (!is_int($value)) throw new VmFault('Integer overflow in ISUB');
+                            $r[$instruction[4]] = $value;
+                            break;
+                        case Superopcode::IEQ_BR_TRUE:
+                        case Superopcode::IEQ_BR_FALSE:
+                        case Superopcode::ILT_BR_TRUE:
+                        case Superopcode::ILT_BR_FALSE:
+                            // Comparison writes its boolean register before the
+                            // branch; both original instructions charge one step.
+                            $isEquality = $op === Superopcode::IEQ_BR_TRUE
+                                || $op === Superopcode::IEQ_BR_FALSE;
+                            $r[$a] = $isEquality
+                                ? ($r[$b] === $r[$c])
+                                : ($r[$b] < $r[$c]);
+                            if (++$steps > $maxSteps) {
+                                throw new ExecutionLimitExceeded('Instruction budget exceeded');
+                            }
+                            ++$pc;
+                            $branchesOnTrue = $op === Superopcode::IEQ_BR_TRUE
+                                || $op === Superopcode::ILT_BR_TRUE;
+                            if ($r[$a] === $branchesOnTrue) {
+                                $pc = $instruction[4];
+                            }
+                            break 2;
                         case Opcode::CONST_:
                             $r[$a] = $constants[$b | ($c << 8)];
                             break;

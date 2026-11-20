@@ -50,14 +50,18 @@ function measure(string $name, object $vm, int $n, int $budget, int $expected): 
 
 $t0 = new Vm($program);
 $t1 = new BlockVm($program);
+$t1Fused = new BlockVm($program, true);
 
 echo 'PHP ' . PHP_VERSION . ' / ' . PHP_OS_FAMILY . PHP_EOL;
 echo 'OPcache CLI=' . ini_get('opcache.enable_cli') . ', JIT=' . ini_get('opcache.jit') . PHP_EOL;
 echo "Input n=$n; seven timed runs after one warm-up per engine\n";
 $a = measure('T0', $t0, $n, $maxSteps, $expected);
-$b = measure('T1', $t1, $n, $maxSteps, $expected);
-if ($a['steps'] !== $b['steps']) throw new RuntimeException('Budget accounting mismatch');
+$b = measure('T1 predecoded', $t1, $n, $maxSteps, $expected);
+$c = measure('T1 fused', $t1Fused, $n, $maxSteps, $expected);
+if ($a['steps'] !== $b['steps'] || $a['steps'] !== $c['steps']) throw new RuntimeException('Budget accounting mismatch');
 printf("T0: %.3f ms (%d instructions)\n", $a['medianMs'], $a['steps']);
 printf("T1: %.3f ms (%d instructions)\n", $b['medianMs'], $b['steps']);
+printf("T1-fused: %.3f ms (%d instructions, %d superinstructions)\n", $c['medianMs'], $c['steps'], $t1Fused->superinstructionCount(0));
 printf("T1/T0 elapsed-time ratio: %.3f (lower is better)\n", $b['medianMs'] / $a['medianMs']);
+printf("Fused/T0 elapsed-time ratio: %.3f (lower is better)\n", $c['medianMs'] / $a['medianMs']);
 echo "Results reflect only this PHP installation and one workload; no general speedup claim.\n";

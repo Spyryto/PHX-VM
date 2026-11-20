@@ -19,7 +19,7 @@ final class BlockCompiler
     /**
      * @return list<array<int, list<array{int, int, int, int}>>>
      */
-    public static function prepare(Program $program): array
+    public static function prepare(Program $program, bool $fuse = false): array
     {
         // A caller must not be able to bypass verification by using T1.
         Verifier::verify($program);
@@ -56,9 +56,53 @@ final class BlockCompiler
                         Instruction::b($word), Instruction::c($word),
                     ];
                 }
-                $blocks[$start] = $operations;
+                $blocks[$start] = $fuse ? self::fuse($operations) : $operations;
             }
             $result[] = $blocks;
+        }
+        return $result;
+    }
+
+    /**
+     * Fuse adjacent instructions only inside a basic block. The second
+     * instruction can never be a branch target or a call-resume point.
+     *
+     * @param list<array{int, int, int, int}> $operations
+     * @return list<list<int>>
+     */
+    private static function fuse(array $operations): array
+    {
+        $result = [];
+        $count = count($operations);
+        for ($i = 0; $i < $count; ++$i) {
+            [$op, $a, $b, $c] = $operations[$i];
+            if ($i + 1 < $count) {
+                [$nextOp, $nextA, $nextB, $nextC] = $operations[$i + 1];
+
+                // The comparison result must be the branch's own condition.
+                if (($op === Opcode::IEQ || $op === Opcode::ILT)
+                    && ($nextOp === Opcode::BR_TRUE || $nextOp === Opcode::BR_FALSE)
+                    && $a === $nextA) {
+                    $fused = match (true) {
+                        $op === Opcode::IEQ && $nextOp === Opcode::BR_TRUE => Superopcode::IEQ_BR_TRUE,
+                        $op === Opcode::IEQ && $nextOp === Opcode::BR_FALSE => Superopcode::IEQ_BR_FALSE,
+                        $op === Opcode::ILT && $nextOp === Opcode::BR_TRUE => Superopcode::ILT_BR_TRUE,
+                        default => Superopcode::ILT_BR_FALSE,
+                    };
+                    // [superop, comparisonDest, left, right, branchTarget].
+                    $result[] = [$fused, $a, $b, $c, $nextB | ($nextC << 8)];
+                    ++$i;
+                    continue;
+                }
+
+                if ($op === Opcode::IADD && $nextOp === Opcode::ISUB) {
+                    // [superop, addDest, addLeft, addRight, subDest, subLeft, subRight].
+                    $result[] = [Superopcode::IADD_ISUB, $a, $b, $c, $nextA, $nextB, $nextC];
+                    ++$i;
+                    continue;
+                }
+            }
+            $result[] = [$op, $a, $b, $c];
         }
         return $result;
     }
