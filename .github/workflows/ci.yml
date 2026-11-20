@@ -18,8 +18,12 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
       - name: Syntax validation
-        run: find src examples tests -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find src examples tests bench -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Tests
         run: php tests/run.php
+      - name: Differential tests T0 vs T1
+        run: php tests/t1.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
+      - name: Benchmark smoke (no speed threshold)
+        run: php bench/compare.php 5000
