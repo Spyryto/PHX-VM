@@ -108,6 +108,21 @@ php -d opcache.enable_cli=1 -d opcache.file_cache=/tmp/phx-vm-opcache -d opcache
 
 La protezione per file recenti (`opcache.file_update_protection`) può impedire la cache di un file appena generato; il valore zero qui è soltanto un controllo sperimentale su file immutabili, **non** una raccomandazione di configurazione globale. Il benchmark non include bootstrap CLI, process spawning, richieste HTTP, rete, FPM, cache warm di un server persistente o utilizzo reale di memoria. Sono misure future.
 
+## Profiler e tiering consultivo (PR #8)
+
+Il profiler `ExecutionProfile` è un componente opzionale dell'interprete canonico T0: `new Vm($program, $profile)`. Non altera la codifica del bytecode e non esegue alcun codice generato. Raccoglie il numero di ingressi per funzione, gli opcode caricati nel budget, i trasferimenti `CALL` e `TAILCALL`, i ritorni, i tentativi rifiutati dal budget e la massima profondità delle continuazioni logiche. Per ogni *funzione di ingresso* conta esecuzioni iniziate/completate/fallite e istruzioni tentate; soltanto i run completati concorrono alla media dei passi usata nella valutazione. La conta degli opcode include le operazioni che falliscono per overflow, ma non i tentativi rifiutati prima della decodifica per superamento del budget. Questi tentativi incrementano un contatore separato e restano inclusi in `Vm::lastSteps()`, come nell'interprete originale. Parametri non validi, rifiutati prima dell'avvio, non creano un campione.
+
+L'instrumentazione incrementa il costo di T0. Perciò le statistiche del profiler sono **contatori logici**, mai misure attendibili della velocità senza profiling. La politica pura `TieringPolicy::assess()` richiede costi unitari espliciti per T0/T2 e preparazione T2, calibrati indipendentemente sullo stesso ambiente e carico. Stima il beneficio lordo:
+
+~~~text
+beneficio = utilizziFuturi * mediaPassiCompletati * (msPerPassoT0 - msPerPassoT2)
+soglia = (compilazione + caricamento) * margineSicurezza
+~~~
+
+Con almeno tre campioni completati e un carico minimo predefinito di 100 passi, la politica produce `candidate_t2` soltanto se il beneficio stimato copre la soglia; altrimenti `stay_t0` oppure `collect_more`. **È solo una raccomandazione**: non cambia il tier in esecuzione, non carica PHP e non conosce ancora lo stato effettivo della cache. I costi per istruzione non sono costanti per tutti gli opcode e le forme di ricorsione, quindi la stima è una prima euristica da validare su carichi differenti.
+
+`tests/tiering.php` confronta T0 con/senza profiler per risultati, classi e messaggi di errore e budget esatti; controlla opcode per funzione, profondità di frame, ricorsione profonda, accumulatori, reset e input patologici della policy. `bench/tiering.php` misura separatamente T0 non strumentato, T2 già caricato e preparazione T2, senza applicare automaticamente alcuna decisione.
+
 ## Misurazione
 
 Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso programma di somma iterativa verificato, stampa le mediane di sette prove, la versione PHP, l'impostazione OPcache/JIT e il rapporto dei tempi. Non include costi di preparazione del programma e non stabilisce un guadagno generale. Per dichiarare un miglioramento occorrono workload differenti, controllo del rumore, benchmark con costi di preparazione e confronto con PHP nativo semanticamente equivalente.
@@ -122,11 +137,13 @@ php tests/t2.php
 php tests/t2-calls.php
 php tests/inlining.php
 php tests/liveness.php
+php tests/tiering.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 php bench/inline.php 20000
 php bench/frames.php 2000
 php bench/end-to-end.php 2000 7
+php bench/tiering.php 2000 100
 ~~~
 
 Nessuna licenza è stata ancora selezionata.
