@@ -60,6 +60,9 @@ final class TieringPolicy
         $perStepAdvantage = $t0MsPerStep - $t2MsPerStep;
         $gross = $anticipatedRuns * $averageSteps * max(0.0, $perStepAdvantage);
         $preparation = $compileAndLoadMs * $this->safetyFactor;
+        if (!is_finite($gross) || !is_finite($preparation)) {
+            throw new \InvalidArgumentException('Projected tiering costs exceed finite range');
+        }
         $breakEven = null;
         $decision = 'stay_t0';
         $reason = 'insufficient_future_runs';
