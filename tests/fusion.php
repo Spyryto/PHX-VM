@@ -129,7 +129,7 @@ mt_srand(31415);
 for ($case = 0; $case < 100; ++$case) {
     $code = [];
     for ($i = 0; $i < 3; ++$i) {
-        $code[] = I::abc(O::IADD, 2, mt_rand(0, 2), mt_rand(0, 2));
+        $code[] = I::abc(O::IADD, 2, mt_rand(0, $i === 0 ? 1 : 2), mt_rand(0, $i === 0 ? 1 : 2));
         $code[] = I::abc(O::ISUB, 2, mt_rand(0, 2), mt_rand(0, 2));
     }
     $code[] = I::abc(O::RET, 2);
