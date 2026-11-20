@@ -43,7 +43,7 @@ jobs:
         run: php bench/frames.php 250
       - name: Call and recursion benchmark smoke (no speed threshold)
         run: php bench/calls.php 1000
-- name: End-to-end compile/write/load/execute benchmark (no speed threshold)
+      - name: End-to-end compile/write/load/execute benchmark (no speed threshold)
         run: php bench/end-to-end.php 400 3
       - name: OPcache stable artifacts across two CLI processes (no speed threshold)
         shell: bash
