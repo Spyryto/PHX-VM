@@ -1,0 +1,7 @@
+{
+  "name": "spyryto/phx-vm",
+  "description": "An experimental PHP-first register VM",
+  "type": "library",
+  "require": { "php": ">=8.2" },
+  "autoload": { "psr-4": { "PhxVm\\": "src/" } }
+}

@@ -1,9 +1,13 @@
 # PHX-VM
 
-Experimental, PHP-first register virtual machine, independent from Nail or any other source language.
+An experimental **PHP-first register VM**, independent from Nail or any source language.
 
-The project starts with a verified 32-bit register bytecode interpreter (T0). Later tiers may lower hot paths into basic blocks and specialized PHP suitable for OPcache, always preserving correctness.
+Status: v0.1 T0 interpreter (PHP 8.2+, no dependencies). Packed 32-bit register bytecode, a mandatory verifier for types, jumps and definite assignment, checked integer arithmetic, direct calls and tail calls, explicit frames and an instruction budget.
 
-**Status:** early prototype, PHP 8.2+, no external runtime dependencies. See the source, tests and architecture notes in subsequent commits.
+Run tests with: php tests/run.php
 
-No license has been selected yet.
+Run an example with: php examples/sum-tail.php 10000
+
+Future tiers: T1 basic blocks/superinstructions and T2 generated PHP suitable for OPcache. No performance claims until benchmarked.
+
+See docs/ARCHITECTURE.md for the roadmap and bytecode specification. License not yet selected.
