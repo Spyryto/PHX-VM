@@ -64,6 +64,10 @@ Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C p
 
 **Limite del benchmark T2:** `bench/compare.php` misura l'esecuzione della closure PHP dopo compilazione e caricamento; non include tempi di generazione del sorgente, creazione file, require, warmup OPcache cross-request o memoria del codice emesso. Va quindi affiancato in futuro da benchmark end-to-end e test con OPcache attivo in processi persistenti.
 
+**T2 interprocedurale (prototipo):** le funzioni con `CALL` o `TAILCALL` sono emesse in una singola closure PHP insieme alla chiusura transitiva dei destinatari diretti. Ogni funzione compilata possiede etichette univoche `F<id>_B<pc>`; il trasferimento al callee è un `goto` diretto, non una chiamata ricorsiva PHP. `CALL` salva una continuazione esplicita con identificatore del callsite e tutti i registri del chiamante; `RET` ripristina i registri, scrive il risultato nel registro destinazione, e salta all'istruzione successiva del chiamante tramite un unico dispatch sulle continuazioni. `TAILCALL` riutilizza l'attivazione corrente e non aggiunge frame. Prima di ogni passaggio gli argomenti vengono valutati contemporaneamente, impedendo errori quando la finestra sorgente si sovrappone a quella destinazione. Tutte le variabili registro vengono inizializzate su ingresso e sulle chiamate. L'esecutore conta ciascuna istruzione canonica esattamente una volta, anche quando viene interrotta dal budget o da un overflow.
+
+Per non rallentare il caso comune, il backend **mantiene il precedente percorso T2 senza chiamate** quando la funzione d'ingresso non usa `CALL/TAILCALL`. La ricorsione non terminale richiede memoria per le continuazioni proporzionale alla profondità logica; non viene convertita automaticamente in un algoritmo iterativo a memoria costante. Non è presente un modello di closure o chiamata indiretta: sono funzionalità future.
+
 **Supporto funzionale:** closure, ambienti catturati, chiamate indirette specializzate, applicazione parziale e pattern matching. Queste capacità non devono dipendere da Nail.
 
 **Dati e semantiche:** valori strutturati, interi arbitrari, float, record, rappresentazioni di stringhe/array, gestione effetti e capability dovranno essere specificati prima di ottimizzarli.
@@ -79,6 +83,7 @@ php tests/run.php
 php tests/t1.php
 php tests/fusion.php
 php tests/t2.php
+php tests/t2-calls.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 ~~~
