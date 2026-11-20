@@ -35,6 +35,8 @@ jobs:
         run: php tests/liveness.php
       - name: T0 profiler and tiering advisory differential tests
         run: php tests/tiering.php
+      - name: T2 persistent compiled artifact cache correctness
+        run: php tests/cache.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
@@ -47,6 +49,8 @@ jobs:
         run: php bench/calls.php 1000
       - name: Tiering calibration demo (no speed threshold)
         run: php bench/tiering.php 400 30
+      - name: T2 persistent-cache benchmark smoke (no speed threshold)
+        run: php bench/cache.php 250 3
       - name: End-to-end compile/write/load/execute benchmark (no speed threshold)
         run: php bench/end-to-end.php 400 3
       - name: End-to-end JSON report contract
@@ -66,3 +70,20 @@ jobs:
           php -d opcache.enable_cli=1 -d opcache.file_cache="$file_cache" -d opcache.file_update_protection=0 bench/end-to-end.php 400 3 "$artifacts" | tee "$RUNNER_TEMP/phx-e2e-second-run.log"
           test "$(grep -c 'Stable artifact: reused' "$RUNNER_TEMP/phx-e2e-second-run.log")" -eq 3
           test "$(find "$artifacts" -maxdepth 1 -type f -name 'phx-*.php' | wc -l)" -eq 3
+      - name: T2 compiled artifact cache concurrent-process smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts="$RUNNER_TEMP/phx-cache-race"
+          mkdir -m 700 -p "$artifacts"
+          pids=()
+          for i in 1 2 3 4 5 6; do
+            php tests/cache-worker.php "$artifacts" &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+          test "$(find "$artifacts" -maxdepth 1 -type f -name 'phx-*.php' | wc -l)" -eq 1
+          test "$(find "$artifacts" -maxdepth 1 -type f -name 'phx-*.meta.json' | wc -l)" -eq 1
+          php tests/cache-worker.php "$artifacts"
