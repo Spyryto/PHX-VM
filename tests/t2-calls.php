@@ -88,6 +88,16 @@ checkCalls(compareCalls($p, 2, [14], [100])[1] === serialize(42), 'caller locals
 compareCalls($p, 2, [PHP_INT_MAX], [100]);
 compareCalls($p, 2, [14], range(1, 7));
 
+// Two distinct return sites in the same caller must resume independently.
+$twoCalls = new FunctionDef('twoCalls', [T::INT, T::INT, T::INT], 1, T::INT, [
+    I::abc(O::CALL, 1, 1, 0),
+    I::abc(O::CALL, 2, 1, 1),
+    I::abc(O::RET, 2),
+]);
+$p = new Program([$identity, $twice, $twoCalls]);
+checkCalls(compareCalls($p, 2, [11], [100])[1] === serialize(44), 'two distinct continuations');
+compareCalls($p, 2, [11], range(1, 9));
+
 // Overlapping argument windows: evaluate all callee arguments BEFORE overwriting registers.
 $sub = new FunctionDef('sub', [T::INT, T::INT, T::INT], 2, T::INT, [
     I::abc(O::ISUB, 2, 0, 1), I::abc(O::RET, 2),
