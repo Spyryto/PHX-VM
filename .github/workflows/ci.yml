@@ -45,6 +45,12 @@ jobs:
         run: php bench/calls.php 1000
       - name: End-to-end compile/write/load/execute benchmark (no speed threshold)
         run: php bench/end-to-end.php 400 3
+      - name: End-to-end JSON report contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          php bench/end-to-end.php 120 2 --json > "$RUNNER_TEMP/phx-vm-e2e-report.json"
+          php -r '$r = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR); if (count($r["measurements"]) !== 3 || !isset($r["environment"]["php"])) exit(1); foreach ($r["measurements"] as $m) { if ($m["originalInstructions"] < 1 || $m["t2ColdTotalMedianMs"] <= 0) exit(1); }' "$RUNNER_TEMP/phx-vm-e2e-report.json"
       - name: OPcache stable artifacts across two CLI processes (no speed threshold)
         shell: bash
         run: |
