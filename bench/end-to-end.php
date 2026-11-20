@@ -91,6 +91,7 @@ function caseE2e(
     $baselineBuild = [];
     $baselineWarm = [];
     $baselineSteps = null;
+    $steps = 0;
     for ($i = 0; $i < $samples; ++$i) {
         $start = hrtime(true);
         $vm = new Vm($program);
