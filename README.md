@@ -14,6 +14,7 @@ php tests/t2.php
 php tests/t2-calls.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
+php bench/calls.php 10000
 ~~~
 
 - **T0: PhxVm\Vm** executes compact verified 32-bit register bytecode.
@@ -26,7 +27,9 @@ php bench/compare.php 30000
 
 **Trust boundary:** generated PHP is **host code**, not a sandbox. Do not load externally supplied PHP files or untrusted source. The generated source may benefit from OPcache on stable filenames. Benchmarks exclude source generation and loading costs; the interprocedural path may be slower on small or cold programs. No JIT, closure values, indirect calls, or automatic transformation of non-tail recursion into a constant-memory algorithm is implemented.
 
-Next experiments: benchmark interprocedural calls and compilation overhead, specialize hot call paths, and measure warm/cold OPcache. Changes must not compromise semantic equivalence or the verifier. Changes must not compromise semantic equivalence or the verifier.
+Benchmarks: `bench/calls.php` compares tail and non-tail recursive workloads using T0, fused T1 and interprocedural T2; compilation and file loading times are printed separately from runtime medians. These quick measurements are not full OPcache/JIT studies.
+
+Next experiments: specialize hot call paths and measure warm/cold OPcache. Changes must not compromise semantic equivalence or the verifier. Changes must not compromise semantic equivalence or the verifier.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the bytecode ISA, correctness rules and planned tiers.
 
