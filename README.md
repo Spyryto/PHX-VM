@@ -17,7 +17,9 @@ php tests/liveness.php
 php tests/tiering.php
 php tests/cache.php
 php tests/adaptive.php
+php tests/codec.php
 php examples/sum-tail.php 10000
+php examples/bytecode.php 500
 php bench/compare.php 30000
 php bench/calls.php 10000
 php bench/inline.php 20000
@@ -82,6 +84,16 @@ The policy is evaluated immediately before a **valid** entry invocation once eno
 
 `TieringCalibration` values are not measured by the instrumented interpreter: the profiling overhead would bias the decision. Use `php bench/tiering.php 2000 100` to calibrate uninstrumented T0 vs warmed T2 and `php bench/adaptive.php 2000 100` to observe actual tier transitions. The policy currently uses a simplified mean-cost-per-bytecode-instruction model and a caller-supplied future invocation forecast, **not** a universal or self-calibrating predictor. A cold one-shot program may still be faster under T0.
 
+**Experimental binary PHX v1 interchange format (M4):** `ProgramCodec::encode($program)` produces deterministic, explicitly tagged binary bytecode, and `ProgramCodec::decode($bytes)` or `ProgramCodec::decodeFile($path)` loads only structurally valid, **fully verified** Programs. The format is independent of PHP serialization, eval or generated PHP files. It stores functions, typed registers, 32-bit instructions, exact scalar constants and their order; signed 64-bit integers, IEEE-754 floats and arbitrary byte strings are supported. The envelope includes a magic value, format version and reserved fields; unsupported versions, malformed data, overlarge inputs and invalid bytecode are rejected. The v1 importer limits total encoded bytes (8 MiB), aggregate instructions (200,000), string constant size (1 MiB), and the verifier's existing per-function limits. **Requires 64-bit PHP.** This format is experimental: no pre-1.0 backward compatibility is promised.
+
+~~~php
+$binary = \PhxVm\ProgramCodec::encode($program);
+$loaded = \PhxVm\ProgramCodec::decode($binary);
+$result = (new \PhxVm\Vm($loaded))->run($entry, $args);
+~~~
+
+See [docs/BYTECODE.md](docs/BYTECODE.md) for the exact field layout and a 32-byte golden binary vector, and `php examples/bytecode.php 500` for a working import/export example. This is a **program interchange format**, not a sandbox or a license to execute arbitrary host PHP: callers still need sensible instruction, memory and time budgets.
+
 **Trust boundary:** generated PHP is **host code**, not a sandbox. Do not load externally supplied PHP files or untrusted source. The generated source may benefit from OPcache on stable filenames. Benchmarks exclude source generation and loading costs; the interprocedural path may be slower on small or cold programs. No JIT, closure values, indirect calls, or automatic transformation of non-tail recursion into a constant-memory algorithm is implemented.
 
 **End-to-end and OPcache experiment:** `php bench/end-to-end.php 2000 7` compares T0 construction+run, T0 warm run, T2 cold (verified generation + write + require + first execution), T2 warm closure execution, and T2 repeated require+run from a stable content-addressed artifact. The benchmark includes a call-free loop and a leaf-call loop, with/without inlining. Correctness and original bytecode instruction budgets are checked on every run. Reports are observational; there are no performance thresholds in CI.
@@ -100,7 +112,7 @@ Use a **private, trusted cache directory**. Content-hashed filenames are immutab
 
 `opcache_is_script_cached()` and script hit counters are reported when available; the report also distinguishes configured JIT settings from an actually active JIT. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
 
-Next experiments: benchmark AdaptiveVm under persistent PHP-FPM/workers, improve per-entry calibration and benchmark representative data-structure/network workloads. Future frontend work should use a stable public PHX IR, independently of Nail. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
+Next M4 work: runtime resource quotas, strict public API contracts and packaging/release checks. Longer-term benchmarks should cover persistent PHP-FPM workers and representative data-structure/network workloads. Any frontend integration remains independent of Nail. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the bytecode ISA, correctness rules and planned tiers.
 
