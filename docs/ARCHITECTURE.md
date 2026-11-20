@@ -12,7 +12,7 @@ Program PHX verificato
       |
       +--> T0: interprete a registri     [implementato]
       +--> T1: blocchi predecodificati    [prototipo]
-      +--> T2: PHP diretto + OPcache     [futuro]
+      +--> T2: PHP diretto a funzioni     [prototipo]
 ~~~
 
 ## Formato di istruzione
@@ -60,7 +60,9 @@ Gli operandi riservati devono essere zero, inclusi A per JMP e TAILCALL, e B/C p
 
 **T1 con superistruzioni (sperimentale):** la modalità opzionale new BlockVm($program, true) prepara istruzioni sintetiche, non serializzabili, soltanto all'interno di un basic block verificato. I primi pattern sono IEQ/ILT + BR_TRUE/BR_FALSE (se il registro condizione coincide con il risultato del confronto) e IADD + ISUB. Ogni operazione fusa esegue i due effetti nell'ordine canonico e controlla il budget separatamente prima della seconda istruzione; errori, lastSteps, branching e registri rimangono equivalenti a T0. L'interprete ha ora un handler per coppia fusa e riduce un dispatch per coppia eseguita, ma non è ancora un compilatore PHP. Fondere tra due leader di blocco, compresi i punti di ripresa di CALL, è vietato. Il benchmark confronta T0, T1 predecodificato e T1 fuso senza imporre soglie prestazionali.
 
-**T2:** traduzione della MachineIR a PHP nativo, con variabili locali, cicli e chiamate dirette. Una funzione ricorsiva terminale può diventare un while. Le ricorsioni non terminali continuano a richiedere frame espliciti salvo trasformazioni giustificate semanticamente.
+**T2 (primo prototipo):** `PhpEmitter::source(Program $program, int $id)` verifica il programma e genera sorgente PHP 8.2+ per una sola funzione priva di CALL/TAILCALL. Ogni registro diventa una variabile locale; i branch e i loop diventano `goto` a etichette nello stesso scope, senza switch né dispatch del bytecode. Per ogni istruzione originale emette il controllo del budget prima dell'effetto; `finally` aggiorna lastSteps anche quando un'operazione genera eccezione. L'aritmetica conserva i controlli di overflow e i tipi esatti del runtime originale. Le costanti sono serializzate con var_export come literal PHP. `PhpVm` carica un file contenente *soltanto output fidato del compilatore* e lo richiama mantenendo l'API run/lastSteps. Al momento le chiamate di funzioni sono rifiutate esplicitamente, non convertite in modo approssimativo. Non c'è JIT, non c'è sandbox e non c'è ancora ricostruzione automatica di `while` strutturati; le etichette rappresentano fedelmente il CFG originale.
+
+**Limite del benchmark T2:** `bench/compare.php` misura l'esecuzione della closure PHP dopo compilazione e caricamento; non include tempi di generazione del sorgente, creazione file, require, warmup OPcache cross-request o memoria del codice emesso. Va quindi affiancato in futuro da benchmark end-to-end e test con OPcache attivo in processi persistenti.
 
 **Supporto funzionale:** closure, ambienti catturati, chiamate indirette specializzate, applicazione parziale e pattern matching. Queste capacità non devono dipendere da Nail.
 
@@ -75,6 +77,8 @@ Il benchmark non assertivo bench/compare.php confronta ora T0 e T1 sullo stesso 
 ~~~sh
 php tests/run.php
 php tests/t1.php
+php tests/fusion.php
+php tests/t2.php
 php examples/sum-tail.php 10000
 php bench/compare.php 30000
 ~~~
