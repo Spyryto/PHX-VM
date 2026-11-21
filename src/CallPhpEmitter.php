@@ -148,7 +148,7 @@ final class CallPhpEmitter
                         // Leaf inlinees cannot CALL again, so a transient guard
                         // is enough; TAILCALL never increases pending depth.
                         if ($op === Opcode::CALL) {
-                            $lines[] = '        if (count($frames) >= $maxFrames) throw new \\PhxVm\\ContinuationLimitExceeded(\\'Continuation frame limit exceeded\\');';
+                            $lines[] = '        if (count($frames) >= $maxFrames) throw new \PhxVm\ContinuationLimitExceeded(\'Continuation frame limit exceeded\');';
                         }
                         $callee = $program->functions[$b];
                         if ($remainingInlineOps >= count($callee->code)
