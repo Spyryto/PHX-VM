@@ -199,7 +199,8 @@ final class PhpArtifactCache
         static $fingerprint = null;
         if ($fingerprint === null) {
             $files = [
-                'CallPhpEmitter.php', 'ExecutionLimitExceeded.php',
+                'CallPhpEmitter.php', 'ContinuationLimitExceeded.php',
+                'ExecutionLimitExceeded.php',
                 'FunctionDef.php', 'InlineEmitter.php', 'Instruction.php',
                 'Opcode.php', 'PhpEmitter.php', 'PhpVm.php', 'Program.php',
                 'RegisterLiveness.php', 'Types.php', 'VerificationException.php',

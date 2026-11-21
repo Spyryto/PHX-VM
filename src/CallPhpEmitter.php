@@ -54,9 +54,10 @@ final class CallPhpEmitter
             '',
             '// PHX-VM T2: generated from verified, trusted bytecode.',
             '// All CALL continuations are explicit; no recursion into PHP.',
-            'return static function (array $args, int $maxSteps, int &$lastSteps): mixed {',
+            'return static function (array $args, int $maxSteps, int &$lastSteps, int $maxFrames = PHP_INT_MAX): mixed {',
             '    $lastSteps = 0;',
             '    if ($maxSteps < 1) throw new \InvalidArgumentException(\'maxSteps must be positive\');',
+            '    if ($maxFrames < 0) throw new \InvalidArgumentException(\'maxFrames must be non-negative\');',
             '    if (!array_is_list($args)) throw new \InvalidArgumentException(\'Arguments must be a list\');',
             '    if (count($args) !== ' . $entryFunction->arity . ') throw new \InvalidArgumentException(\'Wrong argument count\');',
         ];
@@ -142,6 +143,13 @@ final class CallPhpEmitter
                         break;
                     case Opcode::CALL:
                     case Opcode::TAILCALL:
+                        // This quota counts pending logical CALLs, including
+                        // an inlined leaf CALL that needs no physical frame.
+                        // Leaf inlinees cannot CALL again, so a transient guard
+                        // is enough; TAILCALL never increases pending depth.
+                        if ($op === Opcode::CALL) {
+                            $lines[] = '        if (count($frames) >= $maxFrames) throw new \PhxVm\ContinuationLimitExceeded(\'Continuation frame limit exceeded\');';
+                        }
                         $callee = $program->functions[$b];
                         if ($remainingInlineOps >= count($callee->code)
                             && InlineEmitter::eligible($callee)) {

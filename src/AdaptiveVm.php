@@ -120,20 +120,20 @@ final class AdaptiveVm
     }
 
     /** @param list<int|float|bool|string|null> $args */
-    public function run(int $functionId, array $args = [], int $maxSteps = 1000000): mixed
+    public function run(int $functionId, array $args = [], int $maxSteps = 1000000, int $maxFrames = PHP_INT_MAX): mixed
     {
         $this->lastSteps = 0;
         $this->lastBackend = null;
 
         if (isset($this->compiled[$functionId])) {
-            return $this->runT2($functionId, $args, $maxSteps);
+            return $this->runT2($functionId, $args, $maxSteps, $maxFrames);
         }
 
         $calibration = $this->calibrations[$functionId] ?? null;
         if ($calibration !== null && !isset($this->compilationFailures[$functionId])) {
             // Preserve T0's argument/budget validation precedence and avoid
             // allocating executable PHP artifacts for rejected calls.
-            if ($this->validArguments($functionId, $args, $maxSteps)) {
+            if ($this->validArguments($functionId, $args, $maxSteps, $maxFrames)) {
                 $decision = $this->policy->assess(
                     $this->profile,
                     $functionId,
@@ -159,7 +159,7 @@ final class AdaptiveVm
                     }
 
                     if (isset($this->compiled[$functionId])) {
-                        return $this->runT2($functionId, $args, $maxSteps);
+                        return $this->runT2($functionId, $args, $maxSteps, $maxFrames);
                     }
                 }
             }
@@ -168,13 +168,13 @@ final class AdaptiveVm
         // Lightweight root profiling avoids a counter operation per opcode.
         // Detailed profiling remains available, but is not needed for tiering.
         $recordRoot = !$this->detailedProfiling
-            && $this->validArguments($functionId, $args, $maxSteps);
+            && $this->validArguments($functionId, $args, $maxSteps, $maxFrames);
         if ($recordRoot) $this->profile->startRun($functionId);
         $completed = false;
         $this->t0Runs[$functionId] = ($this->t0Runs[$functionId] ?? 0) + 1;
         $this->lastBackend = 'T0';
         try {
-            $result = $this->interpreter->run($functionId, $args, $maxSteps);
+            $result = $this->interpreter->run($functionId, $args, $maxSteps, $maxFrames);
             $completed = true;
             return $result;
         } finally {
@@ -186,13 +186,13 @@ final class AdaptiveVm
     }
 
     /** @param list<int|float|bool|string|null> $args */
-    private function runT2(int $functionId, array $args, int $maxSteps): mixed
+    private function runT2(int $functionId, array $args, int $maxSteps, int $maxFrames): mixed
     {
         $this->t2Runs[$functionId] = ($this->t2Runs[$functionId] ?? 0) + 1;
         $this->lastBackend = 'T2';
         $compiled = $this->compiled[$functionId];
         try {
-            return $compiled->run($functionId, $args, $maxSteps);
+            return $compiled->run($functionId, $args, $maxSteps, $maxFrames);
         } finally {
             $this->lastSteps = $compiled->lastSteps();
         }
@@ -204,9 +204,9 @@ final class AdaptiveVm
      *
      * @param array<mixed> $args
      */
-    private function validArguments(int $functionId, array $args, int $maxSteps): bool
+    private function validArguments(int $functionId, array $args, int $maxSteps, int $maxFrames): bool
     {
-        if ($maxSteps < 1 || !isset($this->program->functions[$functionId])
+        if ($maxSteps < 1 || $maxFrames < 0 || !isset($this->program->functions[$functionId])
             || !array_is_list($args)) return false;
 
         $function = $this->program->functions[$functionId];

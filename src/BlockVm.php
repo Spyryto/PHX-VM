@@ -49,10 +49,11 @@ final class BlockVm
     }
 
     /** @param list<int|float|bool|string|null> $args */
-    public function run(int $functionId, array $args = [], int $maxSteps = 1000000): mixed
+    public function run(int $functionId, array $args = [], int $maxSteps = 1000000, int $maxFrames = PHP_INT_MAX): mixed
     {
         $this->lastSteps = 0;
         if ($maxSteps < 1) throw new \InvalidArgumentException('maxSteps must be positive');
+        if ($maxFrames < 0) throw new \InvalidArgumentException('maxFrames must be non-negative');
         if (!isset($this->program->functions[$functionId])) throw new \InvalidArgumentException('Unknown function ID');
         if (!array_is_list($args)) throw new \InvalidArgumentException('Arguments must be a list');
 
@@ -158,6 +159,9 @@ final class BlockVm
                             break 2;
                         case Opcode::CALL:
                         case Opcode::TAILCALL:
+                            if ($op === Opcode::CALL && count($frames) >= $maxFrames) {
+                                throw new ContinuationLimitExceeded('Continuation frame limit exceeded');
+                            }
                             $callee = $functions[$b];
                             $nextRegisters = array_fill(0, count($callee->registerTypes), null);
                             for ($i = 0; $i < $callee->arity; ++$i) {

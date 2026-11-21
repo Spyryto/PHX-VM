@@ -70,6 +70,51 @@ Per la specifica dei campi, dei tag e il vettore di riferimento di 32 byte,
 vedi [BYTECODE.md](BYTECODE.md). La versione 1 identifica solo il protocollo
 binario sperimentale, **non** una promessa di retrocompatibilità prima della 1.0.
 
+## Budget delle continuazioni (M4)
+
+Oltre al budget delle istruzioni originarie `maxSteps`, tutti i motori
+espongono una quota opzionale `maxFrames` come quarto argomento della
+funzione `run(entry, args, maxSteps, maxFrames)`.
+
+- Il contatore è il numero di **CALL non terminali ancora in sospeso** nella
+  catena di attivazioni. Non include l'attivazione corrente.
+- Una `CALL` che richiede un ulteriore livello con profondità già pari
+  a `maxFrames` fallisce con `ContinuationLimitExceeded` e messaggio
+  `Continuation frame limit exceeded`. L'istruzione CALL è già stata
+  contabilizzata in `lastSteps()`, ma non viene eseguito alcun bytecode
+  della funzione chiamata.
+- Se la stessa CALL supera anche `maxSteps`, prevale l'errore di budget
+  delle istruzioni: il controllo `maxSteps` avviene prima di quello
+  sulle continuazioni.
+- `TAILCALL` non incrementa la profondità delle continuazioni;
+  l'ottimizzazione di inlining delle CALL preserva la **semantica logica** della
+  quota anche se non materializza un frame fisico.
+- I valori `maxFrames=0` e `maxFrames=PHP_INT_MAX` sono rispettivamente
+  il divieto assoluto di CALL non terminali e il default retrocompatibile.
+  Valori negativi vengono rifiutati prima dell'esecuzione.
+- Il profilo T0 addebita una CALL fallita al relativo istogramma degli opcode,
+  senza registrare un nuovo ingresso nel callee; una quota superata non
+  equivale a un `ExecutionLimitExceeded` per il budget di istruzioni.
+- Una `AdaptiveVm` promossa passa esattamente la stessa quota alla
+  closure T2 residente; l'errore del tier compilato non viene mai rieseguito
+  su T0.
+
+**Compatibilità del codice compilato:** la closure T2 ora ha un quarto
+parametro di esecuzione. Poiché PHP consente chiamate userland con argomenti
+extra, `PhpVm` rifiuta esplicitamente gli artefatti di formato
+precedente con tre parametri: altrimenti `maxFrames` verrebbe
+silenziosamente ignorato. La cache T2 calcola un nuovo fingerprint dopo il
+riavvio dei worker e rigenera il file compilato.
+
+La quota *non* misura la memoria fisica del processo. In T0 un frame conserva
+il banco intero del chiamante, in T2 il salvataggio può essere ridotto
+tramite liveness. Un limite alla profondità fornisce una protezione
+prevedibile contro ricorsione non terminale, ma **non** sostituisce quote
+di allocazione, limiti di memoria PHP, timeout host o budget delle
+istruzioni. I test differenziali `tests/continuations.php` esercitano
+limite zero, ricorsione profonda, chiamate in sequenza, TAILCALL, inlining,
+overflow e passaggi fra T0 e T2 con conteggio identico.
+
 ## Contratti di correttezza
 
 1. **Tipi stretti.** Nessuna coercizione PHP implicita. I tipi iniziali sono int, float, bool, string e null; il nucleo v0.1 implementa la sola aritmetica intera e confronti interi.
@@ -221,6 +266,7 @@ php tests/tiering.php
 php tests/cache.php
 php tests/adaptive.php
 php tests/codec.php
+php tests/continuations.php
 php examples/sum-tail.php 10000
 php examples/bytecode.php 500
 php bench/compare.php 30000

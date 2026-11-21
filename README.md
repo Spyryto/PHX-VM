@@ -18,6 +18,7 @@ php tests/tiering.php
 php tests/cache.php
 php tests/adaptive.php
 php tests/codec.php
+php tests/continuations.php
 php examples/sum-tail.php 10000
 php examples/bytecode.php 500
 php bench/compare.php 30000
@@ -94,6 +95,18 @@ $result = (new \PhxVm\Vm($loaded))->run($entry, $args);
 
 See [docs/BYTECODE.md](docs/BYTECODE.md) for the exact field layout and a 32-byte golden binary vector, and `php examples/bytecode.php 500` for a working import/export example. This is a **program interchange format**, not a sandbox or a license to execute arbitrary host PHP: callers still need sensible instruction, memory and time budgets.
 
+**M4 execution continuation quota:** every engine (`Vm`, `BlockVm`, `PhpVm`, and `AdaptiveVm`) accepts an optional **fourth** `run()` argument `maxFrames` that caps the number of **pending non-tail CALL continuations** per invocation. The default `PHP_INT_MAX` preserves existing behavior. Set `0` to prohibit every non-tail `CALL` (even T2 inlined leaf calls), while allowing `TAILCALL` recursion because it reuses the current activation. The instruction budget is charged first; a CALL exceeding the frame quota throws `ContinuationLimitExceeded` with the message `Continuation frame limit exceeded` and the identical `lastSteps()` across T0/T1/T2. Negative limits throw `InvalidArgumentException` without executing any bytecode.
+
+~~~php
+$vm = new \PhxVm\Vm($program);
+$result = $vm->run($entry, $args, maxSteps: 100000, maxFrames: 64);
+
+// Same invocation API after opt-in T2 promotion:
+$result = $adaptiveVm->run($entry, $args, maxSteps: 100000, maxFrames: 64);
+~~~
+
+This is a **logical stack-depth** limit, not a cap on bytes of PHP heap, on total process memory, or on the CPU time spent executing each instruction. A physical frame may contain up to 256 registers on T0, fewer with T2 liveness, but fixed bounds on logical depth do not prevent all other allocations. T2 generated source now accepts a fourth runner argument, and `PhpVm` explicitly rejects old three-argument generated closures rather than silently ignoring the quota; regenerate any legacy compiled artifact. `PhpArtifactCache` automatically invalidates source hashes after an appropriate application worker restart. `tests/continuations.php` checks exact failure positions, recursion, inlining, tail calls, budget precedence and AdaptiveVm switching.
+
 **Trust boundary:** generated PHP is **host code**, not a sandbox. Do not load externally supplied PHP files or untrusted source. The generated source may benefit from OPcache on stable filenames. Benchmarks exclude source generation and loading costs; the interprocedural path may be slower on small or cold programs. No JIT, closure values, indirect calls, or automatic transformation of non-tail recursion into a constant-memory algorithm is implemented.
 
 **End-to-end and OPcache experiment:** `php bench/end-to-end.php 2000 7` compares T0 construction+run, T0 warm run, T2 cold (verified generation + write + require + first execution), T2 warm closure execution, and T2 repeated require+run from a stable content-addressed artifact. The benchmark includes a call-free loop and a leaf-call loop, with/without inlining. Correctness and original bytecode instruction budgets are checked on every run. Reports are observational; there are no performance thresholds in CI.
@@ -112,7 +125,7 @@ Use a **private, trusted cache directory**. Content-hashed filenames are immutab
 
 `opcache_is_script_cached()` and script hit counters are reported when available; the report also distinguishes configured JIT settings from an actually active JIT. Reusing an artifact path does *not* itself prove that the second CLI process got a disk-cache hit. OPcache's shared-memory behavior in a long-lived FPM server is not reproduced by independent CLI processes. The main benchmark also excludes process startup and network/request handling. Other benchmarks (`bench/calls.php`, `bench/frames.php`) continue to isolate runtime from generation/load costs.
 
-Next M4 work: runtime resource quotas, strict public API contracts and packaging/release checks. Longer-term benchmarks should cover persistent PHP-FPM workers and representative data-structure/network workloads. Any frontend integration remains independent of Nail. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
+Next M4 work: explicit heap/resource accounting beyond logical continuation depth, strict public API contracts and packaging/release checks. Longer-term benchmarks should cover persistent PHP-FPM workers and representative data-structure/network workloads. Any frontend integration remains independent of Nail. `bench/frames.php` measures wide-register non-tail recursion with all-register versus live-register continuations, separately reporting compilation and loading costs. Changes must not compromise semantic equivalence or the verifier.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the bytecode ISA, correctness rules and planned tiers.
 

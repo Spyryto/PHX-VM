@@ -43,6 +43,8 @@ jobs:
         run: php tests/codec.php
       - name: Binary bytecode import/export example
         run: php examples/bytecode.php 500
+      - name: M4 continuation quota differential semantics
+        run: php tests/continuations.php
       - name: Example smoke test
         run: php examples/sum-tail.php 10000
       - name: Benchmark smoke (no speed threshold)
