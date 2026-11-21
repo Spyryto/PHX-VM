@@ -15,6 +15,12 @@ final class PhpVm
         if (!$runner instanceof \Closure) {
             throw new \InvalidArgumentException('T2 file must return a closure');
         }
+        // Old 3-argument generated PHP silently ignores extra arguments on
+        // PHP userland closures. Reject it instead of pretending it enforces
+        // the continuation quota. All current T2 compilers emit this ABI.
+        if ((new \ReflectionFunction($runner))->getNumberOfParameters() < 4) {
+            throw new \InvalidArgumentException('T2 artifact lacks continuation quota ABI');
+        }
         $this->runner = $runner;
     }
 
