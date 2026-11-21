@@ -37,9 +37,10 @@ final class PhpEmitter
             '',
             '// PHX-VM T2 generated PHP (trusted, verified input).',
             '// Same integer overflow, step counting, and branch semantics as T0.',
-            'return static function (array $args, int $maxSteps, int &$lastSteps): mixed {',
+            'return static function (array $args, int $maxSteps, int &$lastSteps, int $maxFrames = PHP_INT_MAX): mixed {',
             '    $lastSteps = 0;',
             '    if ($maxSteps < 1) throw new \\InvalidArgumentException(\'maxSteps must be positive\');',
+            '    if ($maxFrames < 0) throw new \\InvalidArgumentException(\'maxFrames must be non-negative\');',
             '    if (!array_is_list($args)) throw new \\InvalidArgumentException(\'Arguments must be a list\');',
             '    if (count($args) !== ' . $function->arity . ') throw new \\InvalidArgumentException(\'Wrong argument count\');',
         ];
