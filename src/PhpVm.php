@@ -21,11 +21,12 @@ final class PhpVm
     public function lastSteps(): int { return $this->lastSteps; }
 
     /** @param list<int|float|bool|string|null> $args */
-    public function run(int $functionId, array $args = [], int $maxSteps = 1000000): mixed
+    public function run(int $functionId, array $args = [], int $maxSteps = 1000000, int $maxFrames = PHP_INT_MAX): mixed
     {
         $this->lastSteps = 0;
         if ($maxSteps < 1) throw new \InvalidArgumentException('maxSteps must be positive');
+        if ($maxFrames < 0) throw new \InvalidArgumentException('maxFrames must be non-negative');
         if ($functionId !== $this->functionId) throw new \InvalidArgumentException('Unknown function ID');
-        return ($this->runner)($args, $maxSteps, $this->lastSteps);
+        return ($this->runner)($args, $maxSteps, $this->lastSteps, $maxFrames);
     }
 }
