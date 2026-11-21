@@ -126,6 +126,29 @@ for ($frames = 0; $frames <= 2; ++$frames) {
         quotaCompare($outerEngines, 5, [11], $budget, $frames);
     }
 }
+// The T2 host rejects old trusted artifacts with a three-argument runner:
+// PHP would otherwise silently ignore the new quota argument.
+$legacy = tempnam(sys_get_temp_dir(), 'phx-old-abi-');
+if ($legacy === false) throw new RuntimeException('Cannot allocate legacy fixture');
+try {
+    file_put_contents($legacy, <<<'PHP'
+<?php
+return static function (array $args, int $maxSteps, int &$lastSteps): mixed {
+    return null;
+};
+PHP
+    );
+    try {
+        new PhpVm(0, $legacy);
+        throw new RuntimeException('Legacy artifact accidentally accepted');
+    } catch (InvalidArgumentException $expected) {
+        quotaAssert($expected->getMessage() === 'T2 artifact lacks continuation quota ABI',
+            'old compiled PHP must not silently ignore maxFrames');
+    }
+} finally {
+    unlink($legacy);
+}
+
 // The quota is checked after an opcode's step charge. Budget exhaustion
 // takes precedence when insufficient steps remain for that CALL.
 quotaAssert(quotaCompare($singleEngines, 1, [7], 0, 0) === [
